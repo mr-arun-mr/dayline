@@ -398,6 +398,139 @@ void main() {
     });
   });
 
+  group('deleting part of a series', () {
+    late int gym;
+    const start = CalendarDate(2026, 9, 1);
+    const cutoff = CalendarDate(2026, 9, 11);
+
+    setUp(() async {
+      gym = await addEvent(
+        title: 'Gym',
+        recurrence: Recurrence.daily,
+        startDate: start,
+        timeOfDay: 7 * 60,
+      );
+    });
+
+    Future<bool> happensOn(CalendarDate date) async =>
+        (await db.eventsDao.occurrencesForDate(date)).isNotEmpty;
+
+    group('one occurrence', () {
+      test('removes that day and leaves the rest alone', () async {
+        await db.eventsDao.deleteOccurrence(gym, cutoff);
+
+        expect(await happensOn(cutoff), isFalse);
+        expect(await happensOn(cutoff.addDays(-1)), isTrue);
+        expect(await happensOn(cutoff.addDays(1)), isTrue);
+        // The rule itself survives; only a skip was recorded.
+        expect(await db.eventsDao.eventById(gym), isNotNull);
+      });
+
+      test('drops anything recorded against the day it removes', () async {
+        await db.eventsDao.setCompletion(
+            eventId: gym, date: cutoff, status: CompletionStatus.done);
+
+        await db.eventsDao.deleteOccurrence(gym, cutoff);
+
+        expect(await db.select(db.completions).get(), isEmpty,
+            reason: 'a completion for a day that no longer exists');
+      });
+
+      test('deletes the rule outright when it only ever happened once',
+          () async {
+        final dentist = await addEvent(
+          title: 'Dentist',
+          recurrence: Recurrence.once,
+          startDate: cutoff,
+        );
+
+        await db.eventsDao.deleteOccurrence(dentist, cutoff);
+
+        expect(await db.eventsDao.eventById(dentist), isNull,
+            reason: 'a skipped one-off is just a dead row');
+      });
+    });
+
+    group('this and following', () {
+      test('keeps the past and stops the future', () async {
+        await db.eventsDao.deleteOccurrencesFrom(gym, cutoff);
+
+        expect(await happensOn(cutoff.addDays(-1)), isTrue);
+        expect(await happensOn(cutoff), isFalse);
+        expect(await happensOn(cutoff.addDays(1)), isFalse);
+        expect(await happensOn(cutoff.addDays(400)), isFalse);
+      });
+
+      test('ends the series the day before, rather than deleting it', () async {
+        await db.eventsDao.deleteOccurrencesFrom(gym, cutoff);
+
+        final event = await db.eventsDao.eventById(gym);
+        expect(event, isNotNull);
+        expect(event!.endDate, const CalendarDate(2026, 9, 10));
+        expect(event.startDate, start, reason: 'history must survive');
+      });
+
+      test('history recorded before the cutoff is kept', () async {
+        await db.eventsDao.setCompletion(
+          eventId: gym,
+          date: const CalendarDate(2026, 9, 5),
+          status: CompletionStatus.done,
+        );
+        await db.eventsDao.setCompletion(
+          eventId: gym,
+          date: const CalendarDate(2026, 9, 20),
+          status: CompletionStatus.done,
+        );
+
+        await db.eventsDao.deleteOccurrencesFrom(gym, cutoff);
+
+        final remaining = await db.select(db.completions).get();
+        expect(remaining.map((c) => c.date), [const CalendarDate(2026, 9, 5)],
+            reason: 'kept the lived day, dropped the one now impossible');
+      });
+
+      test('overrides after the cutoff go too', () async {
+        await db.eventsDao.setOverride(EventOverride(
+          eventId: gym,
+          date: const CalendarDate(2026, 9, 20),
+          type: OverrideType.skip,
+        ));
+
+        await db.eventsDao.deleteOccurrencesFrom(gym, cutoff);
+
+        expect(await db.select(db.overrides).get(), isEmpty);
+      });
+
+      test('cutting at the start date deletes the whole thing', () async {
+        // Nothing would be left to keep, so an empty rule is not worth having.
+        await db.eventsDao.deleteOccurrencesFrom(gym, start);
+        expect(await db.eventsDao.eventById(gym), isNull);
+      });
+
+      test('cutting before the start date deletes the whole thing', () async {
+        await db.eventsDao.deleteOccurrencesFrom(gym, start.addDays(-5));
+        expect(await db.eventsDao.eventById(gym), isNull);
+      });
+    });
+
+    test('all occurrences removes the rule and its history', () async {
+      await db.eventsDao.setCompletion(
+          eventId: gym, date: cutoff, status: CompletionStatus.done);
+
+      await db.eventsDao.deleteEvent(gym);
+
+      expect(await db.eventsDao.eventById(gym), isNull);
+      expect(await db.select(db.completions).get(), isEmpty);
+    });
+
+    test('deleting an event that is already gone is not an error', () async {
+      await db.eventsDao.deleteEvent(gym);
+      await db.eventsDao.deleteOccurrence(gym, cutoff);
+      await db.eventsDao.deleteOccurrencesFrom(gym, cutoff);
+      expect(await db.eventsDao.allEvents(), isEmpty);
+    });
+  });
+
   group('debug seed', () {
     test('produces the sample day from the spec', () async {
       // A Friday, so the seed's "next Tuesday" dentist is unambiguous.

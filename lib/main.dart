@@ -1,34 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'src/app.dart';
 import 'src/db/database.dart';
 import 'src/db/debug_seed.dart';
+import 'src/providers.dart';
 
-/// Placeholder entry point. The Today screen lands in step 2 — for now this
-/// only proves the database opens on a real device and, in debug builds,
-/// seeds the sample day.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final db = DaylineDatabase();
-  if (kDebugMode) await DebugSeed.populate(db);
-  runApp(DaylineApp(database: db));
-}
 
-class DaylineApp extends StatelessWidget {
-  const DaylineApp({required this.database, super.key});
+  final database = DaylineDatabase();
+  if (kDebugMode) await DebugSeed.populate(database);
 
-  final DaylineDatabase database;
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Dayline',
-    theme: ThemeData(colorSchemeSeed: const Color(0xFF3B82F6)),
-    darkTheme: ThemeData(
-      colorSchemeSeed: const Color(0xFF3B82F6),
-      brightness: Brightness.dark,
-    ),
-    home: const Scaffold(
-      body: Center(child: Text('Dayline — step 1: data layer only')),
+  runApp(
+    ProviderScope(
+      overrides: [databaseProvider.overrideWithValue(database)],
+      child: const DaylineApp(),
     ),
   );
 }

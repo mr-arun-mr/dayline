@@ -164,8 +164,69 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
   Future<bool> updateEvent(EventsCompanion event) =>
       update(events).replace(event);
 
+  /// Removes the rule and, by cascade, everything recorded against it.
   Future<int> deleteEvent(int id) =>
       (delete(events)..where((e) => e.id.equals(id))).go();
+
+  /// Deletes one occurrence, leaving the rest of the series alone.
+  ///
+  /// A recurring rule cannot lose a single day by deletion — there is no row
+  /// to delete — so this records a SKIP override instead. A one-off has
+  /// nothing left once its single occurrence goes, so the rule itself goes.
+  Future<void> deleteOccurrence(int eventId, CalendarDate date) async {
+    final event = await eventById(eventId);
+    if (event == null) return;
+
+    if (event.recurrence == Recurrence.once) {
+      await deleteEvent(eventId);
+      return;
+    }
+
+    await transaction(() async {
+      await into(overrides).insertOnConflictUpdate(OverridesCompanion.insert(
+        eventId: eventId,
+        date: date,
+        type: OverrideType.skip,
+      ));
+      // Whatever the user had recorded against this day is about a day that
+      // no longer exists.
+      await clearCompletion(eventId, date);
+    });
+  }
+
+  /// Deletes this occurrence and every one after it, keeping the history.
+  ///
+  /// The series is closed by moving its end date back to the day before
+  /// [date] rather than by deleting the rule, so days already lived through —
+  /// and what the user recorded on them — survive. If [date] is at or before
+  /// the start there is nothing left to keep, and the rule is deleted outright.
+  Future<void> deleteOccurrencesFrom(int eventId, CalendarDate date) async {
+    final event = await eventById(eventId);
+    if (event == null) return;
+
+    if (!date.isAfter(event.startDate)) {
+      await deleteEvent(eventId);
+      return;
+    }
+
+    final epochDay = date.epochDay;
+    await transaction(() async {
+      await (update(events)..where((e) => e.id.equals(eventId))).write(
+        EventsCompanion(endDate: Value(date.addDays(-1))),
+      );
+      // Rows about occurrences that no longer exist.
+      await (delete(completions)
+            ..where((c) =>
+                c.eventId.equals(eventId) &
+                c.date.isBiggerOrEqualValue(epochDay)))
+          .go();
+      await (delete(overrides)
+            ..where((o) =>
+                o.eventId.equals(eventId) &
+                o.date.isBiggerOrEqualValue(epochDay)))
+          .go();
+    });
+  }
 
   Future<int> setActive(int id, bool active) =>
       (update(events)..where((e) => e.id.equals(id)))
