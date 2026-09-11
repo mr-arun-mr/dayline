@@ -1,0 +1,40 @@
+name: dayline
+description: "Today's events in one line, with reminders. Offline, on-device, no account."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Typed SQLite. All app data lives here, on the device, and nowhere else.
+  drift: ^2.28.2
+  # drift's official Flutter glue: bundles the sqlite3 native library and
+  # resolves the app-documents path. Part of the drift stack rather than a
+  # dependency in its own right.
+  drift_flutter: ^0.2.7
+
+  # IANA timezone database, used to turn a wall-clock rule into an instant at
+  # the moment of scheduling. Bundled asset, never fetched.
+  timezone: ^0.10.1
+
+  # State management, from step 2 onward.
+  flutter_riverpod: ^3.0.3
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.25.15
+
+  drift_dev: ^2.28.2
+  build_runner: ^2.10.4
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
