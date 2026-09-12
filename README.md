@@ -141,11 +141,14 @@ exact path differs per manufacturer.
 
 ## iOS
 
+> **You need full Xcode.** The Command Line Tools alone are not enough —
+> `flutter build ios` will say *"Application not configured for iOS"* and stop.
+> Xcode is a ~10 GB download from the App Store.
+
 ### One-time setup
 
-1. Install **Xcode** from the App Store. The command line tools alone are not
-   enough — `flutter doctor` will say so.
-2. Point the toolchain at it and finish first launch:
+1. Install **Xcode** from the App Store.
+2. Point the toolchain at it and finish first launch. Both need your password:
 
    ```bash
    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
@@ -155,68 +158,97 @@ exact path differs per manufacturer.
    sudo xcodebuild -runFirstLaunch
    ```
 
-3. Install CocoaPods:
+3. Accept the licence:
+
+   ```bash
+   sudo xcodebuild -license accept
+   ```
+
+4. CocoaPods is already installed if you followed this file; otherwise:
 
    ```bash
    brew install cocoapods
    ```
 
-4. Fetch the iOS pods:
+5. Confirm everything is green:
 
    ```bash
-   cd ios && pod install && cd ..
+   flutter doctor
    ```
 
-### Run on the simulator
+### Build
 
 ```bash
-open -a Simulator
+flutter pub get
 ```
 
 ```bash
-flutter run -d iphone
+cd ios && pod install && cd ..
 ```
 
-Note that **scheduled local notifications do fire in the simulator**, but
-background delivery behaviour is not identical to a real device. Test anything
-timing-sensitive on hardware.
+```bash
+flutter build ios --release
+```
 
-### Run on a physical iPhone
+`pod install` is the step that needs Xcode; it resolves the native side of
+`flutter_local_notifications`, `geolocator`, `native_geofence`, `sqlite3` and
+the rest. The `ios/Podfile` in this repo pins the platform to **iOS 15**
+deliberately — the plugins do not agree on a minimum (two of them need 14) and
+an unset platform leaves CocoaPods on a lower default that fails to resolve.
 
-Local notifications on a real device need a signed build, which needs an Apple
-ID (a free one is enough for personal installs).
+### Install on your iPhone
 
-1. Open the iOS project in Xcode:
+Local notifications and geofences both need a signed build on real hardware. A
+free Apple ID is enough for your own phone.
+
+1. Open the **workspace**, not the project:
 
    ```bash
    open ios/Runner.xcworkspace
    ```
 
 2. Select the **Runner** target → **Signing & Capabilities**.
-3. Tick **Automatically manage signing** and pick your Team. A free personal
-   team is fine.
-4. Change the **Bundle Identifier** to something unique to you, for example
-   `com.yourname.dayline` — the default will already be taken.
-5. Plug the phone in, trust the computer, and:
+3. Tick **Automatically manage signing** and choose your Team. A free personal
+   team works.
+4. **Change the Bundle Identifier.** It currently reads `dev.dayline.dayline`,
+   which is not yours and will be rejected. Use something like
+   `com.yourname.dayline`.
+5. Plug the phone in and trust the computer, then:
 
    ```bash
-   flutter run --release -d <your-iphone>
+   flutter devices
    ```
 
-6. On the phone, go to **Settings → General → VPN & Device Management** and
-   trust your developer certificate. The app will not launch until you do.
+   ```bash
+   flutter run --release -d <your-iphone-id>
+   ```
 
-With a free Apple ID the build expires after **7 days** and must be reinstalled.
-A paid developer account extends that to a year.
+6. On the phone: **Settings → General → VPN & Device Management**, and trust
+   your developer certificate. The app will not launch until you do.
 
-### Build an IPA
+With a free Apple ID the build **expires after 7 days** and must be
+reinstalled. A paid developer account extends that to a year.
+
+### What iOS will ask you for
+
+- **Notifications** — on first launch. Without it no reminder arrives.
+- **Location, "Allow While Using"** then **"Change to Always Allow"** — only if
+  you use Places. iOS deliberately asks for the upgrade separately, and often a
+  day or so later. Until it is granted, arrivals are not recorded and the app
+  says so rather than pretending.
+
+Note that Dayline declares **no `UIBackgroundModes`**. Geofences use region
+monitoring, which iOS relaunches the app for on its own; the `location`
+background mode is for continuous tracking, which this app never does.
+
+### Build an IPA for distribution
 
 ```bash
 flutter build ipa --release
 ```
 
 The archive lands in `build/ios/archive/`, ready for Xcode Organizer or
-`xcrun altool`. This needs a paid developer account.
+TestFlight. This needs a paid developer account.
 
 ---
 
