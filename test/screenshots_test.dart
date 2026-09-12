@@ -344,6 +344,29 @@ void main() {
     );
   });
 
+  testWidgets('all events', (tester) async {
+    await shoot(
+      tester,
+      name: '13-all-events-light',
+      brightness: Brightness.light,
+      markDone: const ['Gym'],
+      interact: (tester) async {
+        await tester.tap(find.byIcon(Icons.list_alt_outlined));
+      },
+    );
+  });
+
+  testWidgets('settings', (tester) async {
+    await shoot(
+      tester,
+      name: '14-settings-dark',
+      brightness: Brightness.dark,
+      interact: (tester) async {
+        await tester.tap(find.byIcon(Icons.settings_outlined));
+      },
+    );
+  });
+
   testWidgets('edit, once', (tester) async {
     await shoot(
       tester,

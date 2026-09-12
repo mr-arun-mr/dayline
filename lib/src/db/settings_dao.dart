@@ -15,6 +15,9 @@ class SettingsDao extends DatabaseAccessor<DaylineDatabase>
   /// Set once the user has been shown the battery-optimisation explanation.
   static const batteryCardDismissed = 'onboarding.batteryCardDismissed';
 
+  /// 'system', 'light' or 'dark'.
+  static const themeMode = 'appearance.themeMode';
+
   Future<String?> read(String key) async {
     final row = await (select(settings)..where((s) => s.key.equals(key)))
         .getSingleOrNull();
@@ -37,5 +40,12 @@ class SettingsDao extends DatabaseAccessor<DaylineDatabase>
       TableUpdateQuery.onTable(settings),
     ),
     read: () => flag(key),
+  );
+
+  Stream<String?> watchValue(String key) => liveQuery(
+    updates: attachedDatabase.tableUpdates(
+      TableUpdateQuery.onTable(settings),
+    ),
+    read: () => read(key),
   );
 }

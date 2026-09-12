@@ -1,6 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'data/backup_service.dart';
+import 'model/event.dart';
+import 'model/streak.dart';
 
 import 'db/database.dart';
 import 'db/events_dao.dart';
@@ -43,9 +48,57 @@ final batteryCardDismissedProvider = StreamProvider<bool>(
       .watchFlag(SettingsDao.batteryCardDismissed),
 );
 
+/// The user's appearance choice. Defaults to following the system.
+final themeModeProvider = StreamProvider<ThemeMode>(
+  (ref) => ref.watch(settingsDaoProvider).watchValue(SettingsDao.themeMode).map(
+        (value) => switch (value) {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.system,
+        },
+      ),
+);
+
+/// Every rule, for the All Events screen.
+final allEventsProvider = StreamProvider<List<Event>>(
+  (ref) => ref.watch(eventsDaoProvider).watchAllEvents(),
+);
+
+final backupServiceProvider = Provider<BackupService>(
+  (ref) => BackupService(ref.watch(databaseProvider)),
+);
+
+/// How a rule is going, recomputed whenever its history changes.
+///
+/// Deliberately `asyncMap` rather than an `async*` generator with an
+/// `await for` inside it. A generator suspended in `await for` never finishes
+/// cancelling, which hangs every widget test that reaches this provider —
+/// the same trap [liveQuery] exists to avoid.
+final streakProvider = StreamProvider.family<Streak, int>((ref, eventId) {
+  final dao = ref.watch(eventsDaoProvider);
+  final clock = ref.watch(clockProvider);
+
+  return dao.watchCompletionsFor(eventId).asyncMap((completions) async {
+    final event = await dao.eventById(eventId);
+    if (event == null || !supportsStreaks(event.recurrence)) {
+      return Streak.none;
+    }
+    return calculateStreak(
+      event: event,
+      completions: completions,
+      now: clock(),
+    );
+  });
+});
+
 /// Whether the OS will actually deliver anything.
 final notificationPermissionProvider = FutureProvider<bool>(
   (ref) => ref.watch(notificationServiceProvider).hasPermission(),
+);
+
+/// Whether Android will let reminders land on the minute.
+final exactAlarmPermissionProvider = FutureProvider<bool>(
+  (ref) => ref.watch(notificationServiceProvider).canScheduleExactAlarms(),
 );
 
 /// Where "now" comes from.

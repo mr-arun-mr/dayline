@@ -249,12 +249,42 @@ flutter test --exclude-tags screenshots
 
 ---
 
+## What is in it
+
+- **Today** — one line of the day: Overdue, the now line, Next up with a live
+  countdown, Later today, and Done folded away. Tap a row to mark it done,
+  long-press for skip / move / edit.
+- **Add & Edit** — all five recurrence shapes (once, daily, weekly, every N
+  days, monthly), lead reminders, colour, notes, end date, and a plain-English
+  preview of the rule you have actually built.
+- **All events** — every rule with its schedule and streak; swipe to delete,
+  toggle to pause.
+- **Settings** — notification and exact-alarm status, the battery-optimisation
+  help card, light/dark/system, and JSON export and import.
+
+## Backups
+
+Export writes a single JSON file and hands it to the share sheet. Nothing is
+uploaded — the app has no internet permission, so where the file goes next is
+entirely your choice.
+
+The format is deliberately plain: dates as `yyyy-MM-dd`, times as minutes since
+midnight, no timestamps anywhere in the schedule. A backup taken in Sydney
+restores unchanged in Los Angeles, and the file is readable in any text editor.
+
+Importing offers two choices. **Replace everything** is a restore — what is in
+the file becomes everything you have. **Add to mine** merges, for pulling
+routines off an old phone onto one already in use. Event ids are reassigned on
+the way in and history is remapped to follow its own event, so a merge cannot
+silently attach one event's history to another.
+
 ## How it is put together
 
 ```
 lib/src/
-  model/           Pure Dart. Dates, recurrence rules, expansion. No Flutter.
+  model/           Pure Dart. Dates, recurrence, sectioning, streaks. No Flutter.
   db/              Drift schema, DAOs, migrations.
+  data/            The JSON backup format and the import/export service.
   notifications/   Scheduling plan (pure) and the OS adapter around it.
   ui/              Screens and widgets.
 ```
@@ -270,4 +300,11 @@ clock is drawn. This is what keeps a 07:00 alarm at 07:00 across a DST change.
 **Occurrences are never stored.** The database holds recurrence *rules*; the
 days they produce are expanded on read for whichever date is being shown. A
 daily event running for a decade is one row.
+
+A third, smaller one worth knowing if you touch the code: **live queries go
+through `liveQuery()`, not drift's `.watch()`.** A subscription to drift's own
+query stream does not finish cancelling under `flutter_test`'s fake clock, so
+any widget test that touches one hangs until its ten-minute timeout. The same
+applies to writing a stream as an `async*` generator with an `await for` inside
+it. Both traps have cost an afternoon already.
 

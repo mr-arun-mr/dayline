@@ -27,6 +27,12 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
     return rows.map(_toEvent).toList();
   }
 
+  /// [allEvents], kept live. See [liveQuery] for why this is not `.watch()`.
+  Stream<List<Event>> watchAllEvents() => liveQuery(
+    updates: attachedDatabase.tableUpdates(TableUpdateQuery.onTable(events)),
+    read: allEvents,
+  );
+
   Future<Event?> eventById(int id) async {
     final row = await (select(events)..where((e) => e.id.equals(id)))
         .getSingleOrNull();
@@ -114,6 +120,30 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
           TableUpdateQuery.onAllTables([events, completions, overrides]),
         ),
         read: () => occurrencesForDate(date),
+      );
+
+  /// Every completion recorded against one rule, keyed by date.
+  Future<Map<CalendarDate, CompletionStatus>> completionsFor(
+    int eventId,
+  ) async {
+    final rows = await (select(completions)
+          ..where((c) => c.eventId.equals(eventId)))
+        .get();
+    return {for (final row in rows) row.date: row.status};
+  }
+
+  /// Fires whenever anything about one rule's history changes.
+  ///
+  /// Emits the history itself rather than a bare signal, so a listener does
+  /// not have to turn round and read it again.
+  Stream<Map<CalendarDate, CompletionStatus>> watchCompletionsFor(
+    int eventId,
+  ) =>
+      liveQuery(
+        updates: attachedDatabase.tableUpdates(
+          TableUpdateQuery.onAllTables([events, completions]),
+        ),
+        read: () => completionsFor(eventId),
       );
 
   Future<int> insertEvent(EventsCompanion event) =>

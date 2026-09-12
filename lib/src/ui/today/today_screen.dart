@@ -8,6 +8,8 @@ import '../../model/occurrence.dart';
 import '../../model/rule_description.dart';
 import '../../providers.dart';
 import '../edit/edit_event_screen.dart';
+import '../events/all_events_screen.dart';
+import '../settings/settings_screen.dart';
 import '../theme.dart';
 import 'battery_card.dart';
 import 'day_strip.dart';
@@ -150,6 +152,16 @@ class _Header extends ConsumerWidget {
               expected: summary!.expected,
               isComplete: summary!.isComplete,
             ),
+          IconButton(
+            onPressed: () => AllEventsScreen.open(context),
+            icon: const Icon(Icons.list_alt_outlined),
+            tooltip: 'All events',
+          ),
+          IconButton(
+            onPressed: () => SettingsScreen.open(context),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+          ),
         ],
       ),
     );

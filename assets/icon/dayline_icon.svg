@@ -1,0 +1,31 @@
+<!--
+  Dayline's mark: a single vertical line of a day, with one moment marked.
+
+  The idea the whole app is built on is "one line of today's events, in order",
+  so the icon is literally that — a timeline running down, three quiet ticks for
+  things done or still to come, and one filled dot for the thing happening next.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- The line of the day. -->
+  <rect x="484" y="196" width="24" height="632" rx="12" fill="#FFFFFF" opacity="0.34"/>
+
+  <!-- Earlier: done, hollow. -->
+  <circle cx="496" cy="286" r="46" fill="none" stroke="#FFFFFF" stroke-width="24" opacity="0.6"/>
+
+  <!-- Now: the one that matters. -->
+  <circle cx="496" cy="472" r="86" fill="#FFFFFF"/>
+  <circle cx="496" cy="472" r="34" fill="#2563EB"/>
+
+  <!-- Later, fading with distance. -->
+  <circle cx="496" cy="652" r="46" fill="none" stroke="#FFFFFF" stroke-width="24" opacity="0.6"/>
+  <circle cx="496" cy="790" r="34" fill="none" stroke="#FFFFFF" stroke-width="20" opacity="0.38"/>
+</svg>
