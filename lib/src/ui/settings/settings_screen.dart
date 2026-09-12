@@ -12,6 +12,7 @@ import '../../data/backup.dart';
 import '../../data/backup_service.dart';
 import '../../db/settings_dao.dart';
 import '../../providers.dart';
+import '../places/places_screen.dart';
 import '../theme.dart';
 
 /// Permissions, appearance, and getting the data in and out.
@@ -33,6 +34,9 @@ class SettingsScreen extends ConsumerWidget {
           _SectionLabel('Reminders'),
           _NotificationStatus(),
           _BatteryHelpCard(),
+          Divider(height: 24),
+          _SectionLabel('Places'),
+          _LocationStatus(),
           Divider(height: 24),
           _SectionLabel('Appearance'),
           _ThemePicker(),
@@ -125,6 +129,90 @@ class _NotificationStatus extends ConsumerWidget {
               null => 'Checking…',
             }),
           ),
+      ],
+    );
+  }
+}
+
+/// Whether the OS will report arrivals while the app is closed.
+class _LocationStatus extends ConsumerWidget {
+  const _LocationStatus();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final granted = ref.watch(backgroundLocationProvider).value;
+
+    return Column(
+      children: [
+        ListTile(
+          minTileHeight: DaylineTheme.rowMinHeight,
+          leading: Icon(
+            granted == true
+                ? Icons.location_on_outlined
+                : Icons.location_off_outlined,
+            color: granted == true ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          title: const Text('Background location'),
+          subtitle: Text(switch (granted) {
+            true => 'Arrivals and departures are being recorded',
+            false => 'Off — places will not notice you arriving',
+            null => 'Checking…',
+          }),
+          trailing: granted == false
+              ? FilledButton(
+                  onPressed: () async {
+                    await ref
+                        .read(geofenceServiceProvider)
+                        .requestPermission();
+                    ref.invalidate(backgroundLocationProvider);
+                    await ref.read(geofenceServiceProvider).reconcile();
+                  },
+                  child: const Text('Allow'),
+                )
+              : null,
+        ),
+        ListTile(
+          minTileHeight: DaylineTheme.rowMinHeight,
+          leading: const Icon(Icons.place_outlined),
+          title: const Text('Manage places'),
+          subtitle: const Text('Add, edit or remove the places you track'),
+          onTap: () => PlacesScreen.open(context),
+        ),
+        ListTile(
+          minTileHeight: DaylineTheme.rowMinHeight,
+          leading: Icon(Icons.delete_sweep_outlined, color: scheme.error),
+          title: const Text('Forget visit history'),
+          subtitle: const Text('Keeps your places, deletes where you have been'),
+          onTap: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Forget visit history?'),
+                content: const Text(
+                  'Every arrival and departure ever recorded will be deleted. '
+                  'Your places are kept. This cannot be undone.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Forget'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            final removed = await ref.read(placesDaoProvider).clearHistory();
+            if (context.mounted) {
+              _tell(context, 'Forgot $removed visit'
+                  '${removed == 1 ? '' : 's'}.');
+            }
+          },
+        ),
       ],
     );
   }

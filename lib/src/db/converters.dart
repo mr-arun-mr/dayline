@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../model/calendar_date.dart';
 import '../model/event.dart';
+import '../model/place.dart';
 import '../model/recurrence.dart';
 
 /// Stores a [CalendarDate] as its epoch-day integer.
@@ -66,4 +67,14 @@ class LeadMinutesConverter extends TypeConverter<List<int>, String> {
 
   @override
   String toSql(List<int> value) => jsonEncode(value);
+}
+
+class PlaceKindConverter extends TypeConverter<PlaceKind, int> {
+  const PlaceKindConverter();
+
+  @override
+  PlaceKind fromSql(int fromDb) => PlaceKind.fromCode(fromDb);
+
+  @override
+  int toSql(PlaceKind value) => value.code;
 }

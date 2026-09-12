@@ -14,6 +14,7 @@ class Event {
     this.notes,
     this.durationMin,
     this.leadMinutes = const [],
+    this.placeId,
   });
 
   final int id;
@@ -31,6 +32,11 @@ class Event {
   final List<int> leadMinutes;
 
   final EventRule rule;
+
+  /// Optionally ties this routine to a place, which is what makes "did you
+  /// actually go to the gym when the reminder fired" answerable. Null for the
+  /// many routines that happen nowhere in particular.
+  final int? placeId;
 
   int get timeOfDay => rule.timeOfDay;
   Recurrence get recurrence => rule.recurrence;

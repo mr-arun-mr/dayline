@@ -4,6 +4,7 @@ part of 'events_dao.dart';
 
 // ignore_for_file: type=lint
 mixin _$EventsDaoMixin on DatabaseAccessor<DaylineDatabase> {
+  $PlacesTable get places => attachedDatabase.places;
   $EventsTable get events => attachedDatabase.events;
   $CompletionsTable get completions => attachedDatabase.completions;
   $OverridesTable get overrides => attachedDatabase.overrides;
@@ -13,6 +14,8 @@ mixin _$EventsDaoMixin on DatabaseAccessor<DaylineDatabase> {
 class EventsDaoManager {
   final _$EventsDaoMixin _db;
   EventsDaoManager(this._db);
+  $$PlacesTableTableManager get places =>
+      $$PlacesTableTableManager(_db.attachedDatabase, _db.places);
   $$EventsTableTableManager get events =>
       $$EventsTableTableManager(_db.attachedDatabase, _db.events);
   $$CompletionsTableTableManager get completions =>

@@ -9,8 +9,10 @@ import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/db/settings_dao.dart';
 import 'package:dayline/src/model/calendar_date.dart';
 import 'package:dayline/src/model/event.dart';
+import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
+import 'package:dayline/src/ui/dashboard/dashboard_screen.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +34,9 @@ void main() {
   // A Friday morning: some of the day has happened, most has not. Pinning it
   // keeps the screenshots identical between runs.
   final now = DateTime(2026, 9, 11, 8, 42);
+  // The place screenshots want an evening, so the open "at home" visit reads
+  // as still happening rather than as a gap.
+  final evening = DateTime(2026, 9, 11, 20, 15);
   final today = CalendarDate.fromDateTime(now);
 
   setUpAll(() async {
@@ -43,6 +48,7 @@ void main() {
     List<String> markDone = const [],
     List<String> markSkipped = const [],
     bool showBatteryCard = false,
+    bool withPlaces = false,
   }) async {
     final db = DaylineDatabase.forTesting(NativeDatabase.memory());
     if (!showBatteryCard) {
@@ -124,6 +130,8 @@ void main() {
       colorValue: 0xFF8B5CF6,
     );
 
+    if (withPlaces) await _seedPlaces(db, today, now);
+
     for (final (titles, status) in [
       (markDone, CompletionStatus.done),
       (markSkipped, CompletionStatus.skipped),
@@ -149,6 +157,7 @@ void main() {
     List<String> markDone = const [],
     List<String> markSkipped = const [],
     bool showBatteryCard = false,
+    bool withPlaces = false,
   }) async {
     // Tests draw shadows as flat black silhouettes by default, which turns
     // every card and button into a heavy outline. These are pictures of the
@@ -161,6 +170,7 @@ void main() {
       markDone: markDone,
       markSkipped: markSkipped,
       showBatteryCard: showBatteryCard,
+      withPlaces: withPlaces,
     );
 
     tester.view.physicalSize = const Size(390 * 3, 844 * 3);
@@ -174,7 +184,7 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          clockProvider.overrideWithValue(() => now),
+          clockProvider.overrideWithValue(() => withPlaces ? evening : now),
           // A fixed tick, so the countdown does not animate mid-capture.
           secondTickProvider.overrideWith((ref) => Stream.value(now)),
         ],
@@ -367,6 +377,49 @@ void main() {
     );
   });
 
+  testWidgets('dashboard', (tester) async {
+    await shoot(
+      tester,
+      name: '15-dashboard-light',
+      brightness: Brightness.light,
+      withPlaces: true,
+      interact: (tester) async {
+        await tester.tap(find.byIcon(Icons.insights_outlined));
+      },
+    );
+  });
+
+  testWidgets('dashboard, dark', (tester) async {
+    await shoot(
+      tester,
+      name: '16-dashboard-dark',
+      brightness: Brightness.dark,
+      withPlaces: true,
+      interact: (tester) async {
+        await tester.tap(find.byIcon(Icons.insights_outlined));
+        await _settle(tester);
+        await tester.drag(
+          find.byType(DashboardScreen),
+          const Offset(0, -520),
+        );
+      },
+    );
+  });
+
+  testWidgets('places', (tester) async {
+    await shoot(
+      tester,
+      name: '17-places-light',
+      brightness: Brightness.light,
+      withPlaces: true,
+      interact: (tester) async {
+        await tester.tap(find.byIcon(Icons.insights_outlined));
+        await _settle(tester);
+        await tester.tap(find.byIcon(Icons.place_outlined).first);
+      },
+    );
+  });
+
   testWidgets('edit, once', (tester) async {
     await shoot(
       tester,
@@ -422,4 +475,69 @@ Future<void> _loadRealFonts() async {
     }
     await loader.load();
   }
+}
+
+/// Two weeks of plausible comings and goings, so the dashboard has something
+/// to draw. Weekdays at the office, most mornings at the gym, evenings home.
+Future<void> _seedPlaces(
+  DaylineDatabase db,
+  CalendarDate today,
+  DateTime now,
+) async {
+  final gym = await db.placesDao.insertPlace(PlacesCompanion.insert(
+    name: 'Gym',
+    latitude: 51.5012,
+    longitude: -0.1246,
+    radiusMeters: const Value(160),
+    colorValue: 0xFF10B981,
+    kind: PlaceKind.gym,
+  ));
+  final office = await db.placesDao.insertPlace(PlacesCompanion.insert(
+    name: 'Office',
+    latitude: 51.5155,
+    longitude: -0.1410,
+    colorValue: 0xFF64748B,
+    kind: PlaceKind.work,
+  ));
+  final home = await db.placesDao.insertPlace(PlacesCompanion.insert(
+    name: 'Home',
+    latitude: 51.4900,
+    longitude: -0.1700,
+    radiusMeters: const Value(200),
+    colorValue: 0xFF3B82F6,
+    kind: PlaceKind.home,
+  ));
+
+  Future<void> stay(int placeId, CalendarDate date, int fromMin, int toMin) =>
+      db.into(db.visits).insert(VisitsCompanion.insert(
+        placeId: placeId,
+        arrivedAt: date.localDateTimeAt(fromMin),
+        departedAt: Value(date.localDateTimeAt(toMin)),
+      ));
+
+  for (var back = 41; back >= 0; back--) {
+    final date = today.addDays(-back);
+    final isWeekend = date.weekday >= DateTime.saturday;
+
+    // Skipped the gym on a few days, which is the point of the adherence card.
+    final wentToGym = !isWeekend && back % 4 != 1;
+    if (wentToGym) await stay(gym, date, 7 * 60, 8 * 60 + 10);
+    if (!isWeekend) await stay(office, date, 9 * 60, 17 * 60 + 30);
+
+    if (back == 0) {
+      // Still at home right now, so the timeline has an open visit in it.
+      await db.into(db.visits).insert(VisitsCompanion.insert(
+        placeId: home,
+        arrivedAt: date.localDateTimeAt(18 * 60),
+      ));
+    } else {
+      await stay(home, date, 18 * 60, 23 * 60 + 30);
+    }
+  }
+
+  // Tie the gym routine to the gym, which is what the adherence card reads.
+  final gymEvent =
+      (await db.eventsDao.allEvents()).firstWhere((e) => e.title == 'Gym');
+  await (db.update(db.events)..where((e) => e.id.equals(gymEvent.id)))
+      .write(EventsCompanion(placeId: Value(gym)));
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../db/database.dart';
 import '../../model/calendar_date.dart';
+import '../../model/place.dart';
 import '../../model/recurrence.dart';
 import '../../model/rule_description.dart';
 import '../../providers.dart';
@@ -67,6 +68,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
   int _daysOfWeek = Weekdays.none;
   int _interval = 2;
   int? _dayOfMonth;
+  int? _placeId;
 
   bool _loading = true;
   bool _saving = false;
@@ -105,6 +107,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       _daysOfWeek = event.rule.daysOfWeek;
       _interval = event.rule.interval;
       _dayOfMonth = event.rule.dayOfMonth;
+      _placeId = event.placeId;
       _loading = false;
     });
   }
@@ -232,6 +235,11 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
               onChanged: (value) => setState(() => _leadMinutes = value),
             ),
             const Divider(),
+            _PlacePicker(
+              placeId: _placeId,
+              onChanged: (value) => setState(() => _placeId = value),
+            ),
+            const Divider(),
             _ColourPicker(
               selected: _colorValue,
               onChanged: (value) => setState(() => _colorValue = value),
@@ -345,6 +353,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       endDate: Value(_recurrence == Recurrence.once ? null : _endDate),
       leadMinutes: Value(_leadMinutes),
       isActive: const Value(true),
+      placeId: Value(_placeId),
     );
 
     if (_isNew) {
@@ -835,6 +844,75 @@ class _ColourPicker extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Optionally ties this routine to a place.
+///
+/// Only offered when the user has places at all — a picker whose only option
+/// is "nowhere" is a row that teaches nothing.
+class _PlacePicker extends ConsumerWidget {
+  const _PlacePicker({required this.placeId, required this.onChanged});
+
+  final int? placeId;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final places = ref.watch(placesProvider).value ?? const <Place>[];
+    if (places.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        14,
+        DaylineTheme.gutter,
+        14,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.place_outlined,
+                  color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 16),
+              Text('Where', style: theme.textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Anywhere'),
+                selected: placeId == null,
+                onSelected: (isOn) {
+                  if (isOn) onChanged(null);
+                },
+              ),
+              for (final place in places)
+                ChoiceChip(
+                  label: Text(place.name),
+                  selected: place.id == placeId,
+                  onSelected: (isOn) => onChanged(isOn ? place.id : null),
+                ),
+            ],
+          ),
+          if (placeId != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'The dashboard will show whether you were actually there.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );

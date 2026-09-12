@@ -47,6 +47,12 @@ class Events extends Table {
       .map(const LeadMinutesConverter())();
 
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
+  /// Optionally ties this routine to a place, which is what makes "did you
+  /// actually go to the gym when the reminder fired" answerable.
+  IntColumn get placeId => integer()
+      .nullable()
+      .customConstraint('REFERENCES places(id) ON DELETE SET NULL')();
 }
 
 /// Written only when the user acts on an occurrence. An untouched day costs no
@@ -107,4 +113,49 @@ class Settings extends Table {
 
   @override
   Set<Column> get primaryKey => {key};
+}
+
+/// Somewhere the user added by standing there and tapping "use my location".
+///
+/// Coordinates only. There is no places database to look a name up in and no
+/// network permission to reach one, so a place is whatever the user called it.
+@DataClassName('PlaceRow')
+class Places extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get name => text().withLength(min: 1, max: 120)();
+
+  RealColumn get latitude => real()();
+
+  RealColumn get longitude => real()();
+
+  /// How close counts as "here", in metres.
+  RealColumn get radiusMeters =>
+      real().withDefault(const Constant(150))();
+
+  IntColumn get colorValue => integer()();
+
+  IntColumn get kind => integer().map(const PlaceKindConverter())();
+
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+}
+
+/// One stay at a place. Written by the geofence callback, which may be running
+/// in a background isolate with the app closed.
+@TableIndex(name: 'idx_visits_place', columns: {#placeId})
+@TableIndex(name: 'idx_visits_arrived', columns: {#arrivedAt})
+@DataClassName('VisitRow')
+class Visits extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  IntColumn get placeId => integer().customConstraint(
+        'NOT NULL REFERENCES places(id) ON DELETE CASCADE',
+      )();
+
+  /// Real instants, not wall clock: a visit is a thing that happened at a
+  /// moment, unlike a schedule, which is a thing that happens at a time.
+  DateTimeColumn get arrivedAt => dateTime()();
+
+  /// Null while the device is still inside the geofence.
+  DateTimeColumn get departedAt => dateTime().nullable()();
 }

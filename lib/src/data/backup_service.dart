@@ -20,11 +20,15 @@ class ImportResult {
     required this.events,
     required this.completions,
     required this.overrides,
+    this.places = 0,
+    this.visits = 0,
   });
 
   final int events;
   final int completions;
   final int overrides;
+  final int places;
+  final int visits;
 }
 
 /// Reads and writes the whole database as one JSON document.
@@ -37,6 +41,8 @@ class BackupService {
     final events = await _db.select(_db.events).get();
     final completions = await _db.select(_db.completions).get();
     final overrides = await _db.select(_db.overrides).get();
+    final places = await _db.select(_db.places).get();
+    final visits = await _db.select(_db.visits).get();
 
     return Backup(
       exportedAt: at ?? DateTime.now(),
@@ -57,6 +63,28 @@ class BackupService {
             endDate: e.endDate,
             leadMinutes: e.leadMinutes,
             isActive: e.isActive,
+            placeId: e.placeId,
+          ),
+      ],
+      places: [
+        for (final p in places)
+          BackupPlace(
+            id: p.id,
+            name: p.name,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            radiusMeters: p.radiusMeters,
+            colorValue: p.colorValue,
+            kind: p.kind,
+            isActive: p.isActive,
+          ),
+      ],
+      visits: [
+        for (final v in visits)
+          BackupVisit(
+            placeId: v.placeId,
+            arrivedAt: v.arrivedAt,
+            departedAt: v.departedAt,
           ),
       ],
       completions: [
@@ -99,11 +127,47 @@ class BackupService {
     var events = 0;
     var completions = 0;
     var overrides = 0;
+    var places = 0;
+    var visits = 0;
 
     await _db.transaction(() async {
       if (mode == ImportMode.replace) {
-        // Completions and overrides cascade with their events.
+        // Completions and overrides cascade with their events, visits with
+        // their places.
         await _db.delete(_db.events).go();
+        await _db.delete(_db.places).go();
+      }
+
+      // Places go in first: an event can point at one, so the new ids have to
+      // exist before the events that reference them.
+      final placeIdMap = <int, int>{};
+      for (final place in backup.places) {
+        final newId = await _db.into(_db.places).insert(
+          PlacesCompanion.insert(
+            name: place.name,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            radiusMeters: Value(place.radiusMeters),
+            colorValue: place.colorValue,
+            kind: place.kind,
+            isActive: Value(place.isActive),
+          ),
+        );
+        placeIdMap[place.id] = newId;
+        places++;
+      }
+
+      for (final visit in backup.visits) {
+        final placeId = placeIdMap[visit.placeId];
+        if (placeId == null) continue;
+        await _db.into(_db.visits).insert(
+          VisitsCompanion.insert(
+            placeId: placeId,
+            arrivedAt: visit.arrivedAt,
+            departedAt: Value(visit.departedAt),
+          ),
+        );
+        visits++;
       }
 
       final idMap = <int, int>{};
@@ -123,6 +187,11 @@ class BackupService {
             endDate: Value(event.endDate),
             leadMinutes: Value(event.leadMinutes),
             isActive: Value(event.isActive),
+            // Remapped like everything else; a rule pointing at a place id
+            // that no longer means the same place is worse than no link.
+            placeId: Value(
+              event.placeId == null ? null : placeIdMap[event.placeId],
+            ),
           ),
         );
         idMap[event.id] = newId;
@@ -163,6 +232,8 @@ class BackupService {
       events: events,
       completions: completions,
       overrides: overrides,
+      places: places,
+      visits: visits,
     );
   }
 

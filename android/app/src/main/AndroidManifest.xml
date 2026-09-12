@@ -21,6 +21,19 @@
     <!-- So a reminder can wake the screen rather than wait for the next
          unlock. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Places. Coarse and fine are the usual pair; BACKGROUND is the one that
+         matters, because a geofence the system only watches while the app is
+         open is a geofence that never fires. Nothing derived from these ever
+         leaves the device - there is still no INTERNET permission below. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Android 10+ wants this declared for a foreground service that uses
+         location; the geofencing plugin starts one to deliver crossings. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <application
         android:label="dayline"
         android:name="${applicationName}"

@@ -24,6 +24,17 @@ Future<void> main() async {
   await container.read(notificationServiceProvider).initialise();
   unawaited(container.read(reminderSyncProvider).start());
 
+  // Geofences do not survive a reboot either, so they are re-registered on
+  // every cold start for the same reason the reminders are.
+  unawaited(
+    container.read(geofenceServiceProvider).reconcile().catchError((
+      Object error,
+    ) {
+      debugPrint('Dayline: could not register geofences — $error');
+      return 0;
+    }),
+  );
+
   runApp(
     UncontrolledProviderScope(
       container: container,

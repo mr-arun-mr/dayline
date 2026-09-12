@@ -276,6 +276,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         colorValue: row.colorValue,
         durationMin: row.durationMin,
         leadMinutes: row.leadMinutes,
+        placeId: row.placeId,
         rule: EventRule(
           recurrence: row.recurrence,
           timeOfDay: row.timeOfDay,

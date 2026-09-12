@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../model/calendar_date.dart';
 import '../model/event.dart';
+import '../model/place.dart';
 import '../model/recurrence.dart';
 
 /// The on-disk backup format.
@@ -19,6 +20,8 @@ class Backup {
     required this.events,
     required this.completions,
     required this.overrides,
+    this.places = const [],
+    this.visits = const [],
     this.exportedAt,
   });
 
@@ -51,15 +54,21 @@ class Backup {
           _list(parsed['completions']).map(BackupCompletion.fromJson).toList(),
       overrides:
           _list(parsed['overrides']).map(BackupOverride.fromJson).toList(),
+      places: _list(parsed['places']).map(BackupPlace.fromJson).toList(),
+      visits: _list(parsed['visits']).map(BackupVisit.fromJson).toList(),
     );
   }
 
-  static const formatVersion = 1;
+  /// Bumped to 2 when places and visits were added. Version 1 files still
+  /// restore — they simply have no places in them.
+  static const formatVersion = 2;
   static const _appName = 'dayline';
 
   final List<BackupEvent> events;
   final List<BackupCompletion> completions;
   final List<BackupOverride> overrides;
+  final List<BackupPlace> places;
+  final List<BackupVisit> visits;
 
   /// Informational only — never read back, so a skewed clock cannot affect a
   /// restore.
@@ -72,6 +81,8 @@ class Backup {
     'events': events.map((e) => e.toJson()).toList(),
     'completions': completions.map((c) => c.toJson()).toList(),
     'overrides': overrides.map((o) => o.toJson()).toList(),
+    'places': places.map((p) => p.toJson()).toList(),
+    'visits': visits.map((v) => v.toJson()).toList(),
   };
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
@@ -112,6 +123,7 @@ class BackupEvent {
     this.endDate,
     this.leadMinutes = const [],
     this.isActive = true,
+    this.placeId,
   });
 
   factory BackupEvent.fromJson(Map<String, dynamic> json) => BackupEvent(
@@ -132,6 +144,7 @@ class BackupEvent {
         .map((n) => n.toInt())
         .toList(),
     isActive: json['isActive'] as bool? ?? true,
+    placeId: _optionalInt(json['placeId']),
   );
 
   final int id;
@@ -148,6 +161,7 @@ class BackupEvent {
   final CalendarDate? endDate;
   final List<int> leadMinutes;
   final bool isActive;
+  final int? placeId;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -155,6 +169,7 @@ class BackupEvent {
     if (notes != null) 'notes': notes,
     'colorValue': colorValue,
     'timeOfDay': timeOfDay,
+    if (placeId != null) 'placeId': placeId,
     if (durationMin != null) 'durationMin': durationMin,
     'recurrence': recurrence.name,
     if (daysOfWeek != Weekdays.none) 'daysOfWeek': daysOfWeek,
@@ -228,6 +243,80 @@ class BackupOverride {
   };
 }
 
+class BackupPlace {
+  const BackupPlace({
+    required this.id,
+    required this.name,
+    required this.latitude,
+    required this.longitude,
+    required this.radiusMeters,
+    required this.colorValue,
+    required this.kind,
+    this.isActive = true,
+  });
+
+  factory BackupPlace.fromJson(Map<String, dynamic> json) => BackupPlace(
+    id: _int(json, 'id'),
+    name: _string(json, 'name'),
+    latitude: _double(json, 'latitude'),
+    longitude: _double(json, 'longitude'),
+    radiusMeters: (json['radiusMeters'] as num?)?.toDouble() ?? 150,
+    colorValue: _int(json, 'colorValue'),
+    kind: _placeKind(json['kind']),
+    isActive: json['isActive'] as bool? ?? true,
+  );
+
+  final int id;
+  final String name;
+  final double latitude;
+  final double longitude;
+  final double radiusMeters;
+  final int colorValue;
+  final PlaceKind kind;
+  final bool isActive;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'latitude': latitude,
+    'longitude': longitude,
+    'radiusMeters': radiusMeters,
+    'colorValue': colorValue,
+    'kind': kind.name,
+    if (!isActive) 'isActive': false,
+  };
+}
+
+/// A recorded stay.
+///
+/// Unlike everything else in a backup these are real instants, because a visit
+/// is something that happened at a moment rather than something scheduled for
+/// a time. They are written as ISO-8601 with an offset so a restore in another
+/// timezone still points at the same moment.
+class BackupVisit {
+  const BackupVisit({
+    required this.placeId,
+    required this.arrivedAt,
+    this.departedAt,
+  });
+
+  factory BackupVisit.fromJson(Map<String, dynamic> json) => BackupVisit(
+    placeId: _int(json, 'placeId'),
+    arrivedAt: _instant(json, 'arrivedAt'),
+    departedAt: DateTime.tryParse(json['departedAt'] as String? ?? ''),
+  );
+
+  final int placeId;
+  final DateTime arrivedAt;
+  final DateTime? departedAt;
+
+  Map<String, dynamic> toJson() => {
+    'placeId': placeId,
+    'arrivedAt': arrivedAt.toIso8601String(),
+    if (departedAt != null) 'departedAt': departedAt!.toIso8601String(),
+  };
+}
+
 int _int(Map<String, dynamic> json, String key) {
   final value = json[key];
   if (value is num) return value.toInt();
@@ -235,6 +324,27 @@ int _int(Map<String, dynamic> json, String key) {
 }
 
 int? _optionalInt(Object? value) => value is num ? value.toInt() : null;
+
+double _double(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is num) return value.toDouble();
+  throw BackupFormatException('An entry is missing its $key.');
+}
+
+DateTime _instant(Map<String, dynamic> json, String key) {
+  final parsed = DateTime.tryParse(json[key] as String? ?? '');
+  if (parsed == null) {
+    throw BackupFormatException('An entry is missing its $key.');
+  }
+  return parsed;
+}
+
+PlaceKind _placeKind(Object? value) {
+  for (final kind in PlaceKind.values) {
+    if (kind.name == value) return kind;
+  }
+  return PlaceKind.other;
+}
 
 String _string(Map<String, dynamic> json, String key) {
   final value = json[key];

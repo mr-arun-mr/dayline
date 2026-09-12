@@ -66,5 +66,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Shown verbatim in the system prompt, so it says what the app does
+	     with the location rather than reciting the permission. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Dayline uses your location only to record the places you add yourself, so it can tell you when you arrived and left. Nothing leaves your phone.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Dayline needs background location so it can notice you arriving at your places while the app is closed. Everything stays on your phone — the app has no internet access at all.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

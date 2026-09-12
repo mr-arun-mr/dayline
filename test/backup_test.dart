@@ -3,6 +3,7 @@ import 'package:dayline/src/data/backup_service.dart';
 import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/model/calendar_date.dart';
 import 'package:dayline/src/model/event.dart';
+import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -69,7 +70,7 @@ void main() {
       await addGym();
       final json = await backups.exportJson();
       expect(json, contains('"app": "dayline"'));
-      expect(json, contains('"version": 1'));
+      expect(json, contains('"version": 2'));
       expect(json, contains('\n  '), reason: 'indented for a human');
     });
   });
@@ -91,6 +92,17 @@ void main() {
           contains('not made by Dayline'),
         )),
       );
+    });
+
+    test('a version 1 file still restores', () async {
+      // Places arrived in version 2; an older backup simply has none.
+      final result = await backups.importJson(
+        '{"app":"dayline","version":1,"events":[{"id":1,"title":"Gym",'
+        '"colorValue":1,"timeOfDay":420,"recurrence":"daily",'
+        '"startDate":"2026-09-11"}]}',
+      );
+      expect(result.events, 1);
+      expect(result.places, 0);
     });
 
     test('a backup from a future version', () {
@@ -260,5 +272,100 @@ void main() {
       BackupService.suggestedFileName(DateTime(2026, 9, 11)),
       'dayline-2026-09-11.json',
     );
+  });
+
+  group('places and visits', () {
+    Future<int> addGymPlace() => db.placesDao.insertPlace(
+      PlacesCompanion.insert(
+        name: 'Gym',
+        latitude: 51.50123,
+        longitude: -0.12456,
+        radiusMeters: const Value(180),
+        colorValue: 0xFF10B981,
+        kind: PlaceKind.gym,
+      ),
+    );
+
+    test('round trip, with the coordinates intact', () async {
+      await addGymPlace();
+      final restored = Backup.decode(await backups.exportJson());
+
+      final place = restored.places.single;
+      expect(place.name, 'Gym');
+      expect(place.latitude, closeTo(51.50123, 1e-9));
+      expect(place.longitude, closeTo(-0.12456, 1e-9));
+      expect(place.radiusMeters, 180);
+      expect(place.kind, PlaceKind.gym);
+    });
+
+    test('visits follow their place through a merge', () async {
+      final gym = await addGymPlace();
+      await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7));
+      await db.placesDao.recordDeparture(gym, DateTime(2026, 9, 11, 8));
+      final json = await backups.exportJson();
+
+      await db.delete(db.places).go();
+      // Burn ids so the restore cannot land on the originals.
+      for (var i = 0; i < 4; i++) {
+        await db.placesDao.insertPlace(PlacesCompanion.insert(
+          name: 'Filler $i',
+          latitude: 0,
+          longitude: 0,
+          colorValue: 1,
+          kind: PlaceKind.other,
+        ));
+      }
+
+      await backups.importJson(json, mode: ImportMode.merge);
+
+      final restored =
+          (await db.placesDao.allPlaces()).firstWhere((p) => p.name == 'Gym');
+      expect(restored.id, isNot(gym));
+
+      final visits = await db.placesDao.visitsForPlace(restored.id);
+      expect(visits, hasLength(1));
+      expect(visits.single.arrivedAt, DateTime(2026, 9, 11, 7));
+    });
+
+    test("a rule's link to a place is remapped, not left dangling", () async {
+      final gym = await addGymPlace();
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 1,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today,
+        placeId: Value(gym),
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      final place = (await db.placesDao.allPlaces()).single;
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.placeId, place.id,
+          reason: 'a link to the wrong place is worse than none');
+    });
+
+    test('a visit whose place is missing is dropped', () async {
+      const orphaned = '{"app":"dayline","version":2,"events":[],"places":[],'
+          '"visits":[{"placeId":9,"arrivedAt":"2026-09-11T07:00:00.000"}]}';
+
+      final result = await backups.importJson(orphaned);
+
+      expect(result.visits, 0);
+      expect(await db.select(db.visits).get(), isEmpty);
+    });
+
+    test('an open visit stays open through the round trip', () async {
+      final gym = await addGymPlace();
+      await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7));
+
+      await backups.importJson(await backups.exportJson());
+
+      final place = (await db.placesDao.allPlaces()).single;
+      expect((await db.placesDao.visitsForPlace(place.id)).single.isOpen,
+          isTrue);
+    });
   });
 }

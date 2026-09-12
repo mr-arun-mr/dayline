@@ -116,6 +116,10 @@ flutter build appbundle --release
 
 - **Notifications** — asked at runtime on Android 13+. Without it nothing is
   delivered.
+- **Location, including background** — only if you use Places. The system must
+  be allowed to report crossings while the app is closed, which is "Allow all
+  the time" rather than "While using". Nothing derived from it leaves the
+  device.
 - **Exact alarms** — Android 12+ treats these separately. Without them a 07:00
   reminder can arrive at 07:20, which for a medication reminder is a different
   product.
@@ -260,7 +264,45 @@ flutter test --exclude-tags screenshots
 - **All events** — every rule with its schedule and streak; swipe to delete,
   toggle to pause.
 - **Settings** — notification and exact-alarm status, the battery-optimisation
-  help card, light/dark/system, and JSON export and import.
+  help card, background-location status, light/dark/system, and JSON export and
+  import.
+- **Places & Dashboard** — places you add yourself, and what the time actually
+  went on. See below.
+
+## Places and the dashboard
+
+Dayline can notice when you arrive at and leave places **you have added
+yourself**, and use that to answer whether you actually kept the routines tied
+to them.
+
+**It does this entirely offline.** You add a place by standing in it and
+tapping *Use current location*. There is no map, no address search and no
+places database, because all three need a network — and the app still declares
+no internet permission. That also means Dayline cannot know a set of
+coordinates is a Tesco or a Cineworld; it only knows it is the spot you called
+"Tesco".
+
+The OS watches a handful of circles and wakes the app when the device crosses
+one. There is no continuous location stream, so the battery cost is small.
+
+The dashboard answers four questions:
+
+- **Time per place** — totals over 7, 30 or 90 days, with visits clipped to the
+  window rather than counted whole.
+- **Did you go?** — for any routine linked to a place, how many of its past
+  occurrences you were actually there for, within a two-hour grace window.
+- **Today** — a timeline of arrivals and departures, with an open visit shown
+  as still running.
+- **Week by week** — six weeks per place, Monday to Monday, so a drift in
+  either direction is visible.
+
+### What this costs you
+
+Background location is the most heavily scrutinised permission on both stores,
+and Android will not grant it without the user choosing "Allow all the time"
+explicitly. Dayline says plainly when it does not have it rather than looking
+like it is working. Visit history can be wiped from Settings at any time
+without losing the places themselves, and it is included in backups.
 
 ## Backups
 
@@ -286,6 +328,7 @@ lib/src/
   db/              Drift schema, DAOs, migrations.
   data/            The JSON backup format and the import/export service.
   notifications/   Scheduling plan (pure) and the OS adapter around it.
+  location/        Geofence registration and the background crossing handler.
   ui/              Screens and widgets.
 ```
 

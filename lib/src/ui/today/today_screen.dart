@@ -8,6 +8,7 @@ import '../../model/occurrence.dart';
 import '../../model/rule_description.dart';
 import '../../providers.dart';
 import '../edit/edit_event_screen.dart';
+import '../dashboard/dashboard_screen.dart';
 import '../events/all_events_screen.dart';
 import '../settings/settings_screen.dart';
 import '../theme.dart';
@@ -156,6 +157,11 @@ class _Header extends ConsumerWidget {
             onPressed: () => AllEventsScreen.open(context),
             icon: const Icon(Icons.list_alt_outlined),
             tooltip: 'All events',
+          ),
+          IconButton(
+            onPressed: () => DashboardScreen.open(context),
+            icon: const Icon(Icons.insights_outlined),
+            tooltip: 'Dashboard',
           ),
           IconButton(
             onPressed: () => SettingsScreen.open(context),

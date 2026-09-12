@@ -5,13 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/backup_service.dart';
 import 'model/event.dart';
+import 'model/place.dart';
 import 'model/streak.dart';
 
 import 'db/database.dart';
 import 'db/events_dao.dart';
+import 'db/places_dao.dart';
 import 'db/settings_dao.dart';
 import 'model/calendar_date.dart';
 import 'model/occurrence.dart';
+import 'location/geofence_service.dart';
 import 'notifications/notification_service.dart';
 import 'notifications/reminder_sync.dart';
 
@@ -90,6 +93,49 @@ final streakProvider = StreamProvider.family<Streak, int>((ref, eventId) {
     );
   });
 });
+
+final placesDaoProvider =
+    Provider<PlacesDao>((ref) => ref.watch(databaseProvider).placesDao);
+
+final geofenceServiceProvider = Provider<GeofenceService>(
+  (ref) => GeofenceService(ref.watch(databaseProvider)),
+);
+
+final placesProvider = StreamProvider<List<Place>>(
+  (ref) => ref.watch(placesDaoProvider).watchPlaces(),
+);
+
+/// Whether the OS will report crossings with the app closed. Anything less and
+/// the whole feature is decorative.
+final backgroundLocationProvider = FutureProvider<bool>(
+  (ref) => ref.watch(geofenceServiceProvider).hasBackgroundPermission(),
+);
+
+/// Visits inside a window, kept live.
+final visitsProvider =
+    StreamProvider.family<List<Visit>, DateRange>((ref, range) =>
+        ref.watch(placesDaoProvider).watchVisitsBetween(range.from, range.to));
+
+/// A window of time, as a value so it can key a provider family.
+class DateRange {
+  const DateRange(this.from, this.to);
+
+  /// The last [days] days up to the end of [today].
+  factory DateRange.lastDays(CalendarDate today, int days) => DateRange(
+    today.addDays(-(days - 1)).localDateTimeAt(0),
+    today.addDays(1).localDateTimeAt(0),
+  );
+
+  final DateTime from;
+  final DateTime to;
+
+  @override
+  bool operator ==(Object other) =>
+      other is DateRange && other.from == from && other.to == to;
+
+  @override
+  int get hashCode => Object.hash(from, to);
+}
 
 /// Whether the OS will actually deliver anything.
 final notificationPermissionProvider = FutureProvider<bool>(
