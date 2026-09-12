@@ -1,4 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reminders are the product. Everything below is about getting an alarm
+         to fire at the right minute; none of it touches the network, and the
+         app declares no internet permission at all. -->
+
+    <!-- Android 13+ asks the user at runtime. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 12+ splits exact alarms out. Without one of these a 07:00
+         reminder can arrive at 07:20, which for medication is a different
+         product. USE_EXACT_ALARM is for the alarm-clock case and is granted
+         without a prompt; SCHEDULE_EXACT_ALARM covers older 12/13 devices and
+         is revocable in settings. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- A reboot clears every pending alarm, so they have to be laid down
+         again before the user notices anything is missing. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- So a reminder can wake the screen rather than wait for the next
+         unlock. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:label="dayline"
         android:name="${applicationName}"
@@ -30,6 +52,31 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Re-lays every scheduled alarm after a reboot, and after the app is
+             updated or restored. Without this the app is silent until the user
+             happens to open it. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Delivers a scheduled notification when its alarm goes off. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+
+        <!-- Handles Done and Snooze from the notification itself, in a
+             background isolate, without bringing the app to the front. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

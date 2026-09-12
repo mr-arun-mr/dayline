@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'db/database.dart';
 import 'db/events_dao.dart';
+import 'db/settings_dao.dart';
 import 'model/calendar_date.dart';
 import 'model/occurrence.dart';
+import 'notifications/notification_service.dart';
+import 'notifications/reminder_sync.dart';
 
 /// Overridden in `main` with the opened database, so widget tests can hand in
 /// an in-memory one instead.
@@ -15,6 +18,35 @@ final databaseProvider = Provider<DaylineDatabase>(
 
 final eventsDaoProvider =
     Provider<EventsDao>((ref) => ref.watch(databaseProvider).eventsDao);
+
+final settingsDaoProvider =
+    Provider<SettingsDao>((ref) => ref.watch(databaseProvider).settingsDao);
+
+final notificationServiceProvider = Provider<NotificationService>(
+  (ref) => NotificationService(ref.watch(databaseProvider)),
+);
+
+/// Holds the schedule in step with the rules for as long as the app lives.
+final reminderSyncProvider = Provider<ReminderSync>((ref) {
+  final sync = ReminderSync(
+    database: ref.watch(databaseProvider),
+    service: ref.watch(notificationServiceProvider),
+  );
+  ref.onDispose(sync.dispose);
+  return sync;
+});
+
+/// Whether the one-time battery-optimisation explanation has been dealt with.
+final batteryCardDismissedProvider = StreamProvider<bool>(
+  (ref) => ref
+      .watch(settingsDaoProvider)
+      .watchFlag(SettingsDao.batteryCardDismissed),
+);
+
+/// Whether the OS will actually deliver anything.
+final notificationPermissionProvider = FutureProvider<bool>(
+  (ref) => ref.watch(notificationServiceProvider).hasPermission(),
+);
 
 /// Where "now" comes from.
 ///

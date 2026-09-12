@@ -6,7 +6,6 @@ import 'package:dayline/src/providers.dart';
 import 'package:dayline/src/ui/today/next_up_card.dart';
 import 'package:dayline/src/ui/today/now_divider.dart';
 import 'package:dayline/src/ui/today/occurrence_tile.dart';
-import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

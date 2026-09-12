@@ -7,6 +7,7 @@ import '../model/event.dart';
 import '../model/occurrence.dart';
 import '../model/recurrence.dart';
 import 'database.dart';
+import 'live_query.dart';
 import 'tables.dart';
 
 part 'events_dao.g.dart';
@@ -106,57 +107,14 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
 
   /// [occurrencesForDate], re-run whenever anything it reads changes.
   ///
-  /// Built on drift's table-update stream rather than a watched query, because
-  /// the rule expansion happens in Dart and spans three tables.
-  ///
-  /// Written with an explicit controller rather than as an `async*` generator:
-  /// a generator suspended in `await for` never finishes cancelling, and the
-  /// Today screen opens one of these per day as the user scrubs the date
-  /// strip. The controller also coalesces bursts, so one transaction that
-  /// touches all three tables causes one re-query, not three.
-  Stream<List<Occurrence>> watchOccurrencesForDate(CalendarDate date) {
-    late final StreamController<List<Occurrence>> controller;
-    StreamSubscription<void>? updates;
-    var running = false;
-    var restartWanted = false;
-
-    Future<void> emit() async {
-      if (running) {
-        restartWanted = true;
-        return;
-      }
-      running = true;
-      try {
-        do {
-          restartWanted = false;
-          final day = await occurrencesForDate(date);
-          if (controller.isClosed) return;
-          controller.add(day);
-        } while (restartWanted);
-      } catch (error, stackTrace) {
-        if (!controller.isClosed) controller.addError(error, stackTrace);
-      } finally {
-        running = false;
-      }
-    }
-
-    controller = StreamController<List<Occurrence>>(
-      onListen: () {
-        updates = attachedDatabase
-            .tableUpdates(
-              TableUpdateQuery.onAllTables([events, completions, overrides]),
-            )
-            .listen((_) => emit());
-        emit();
-      },
-      onCancel: () async {
-        final subscription = updates;
-        updates = null;
-        await subscription?.cancel();
-      },
-    );
-    return controller.stream;
-  }
+  /// See [liveQuery] for why this is not drift's own `.watch()`.
+  Stream<List<Occurrence>> watchOccurrencesForDate(CalendarDate date) =>
+      liveQuery(
+        updates: attachedDatabase.tableUpdates(
+          TableUpdateQuery.onAllTables([events, completions, overrides]),
+        ),
+        read: () => occurrencesForDate(date),
+      );
 
   Future<int> insertEvent(EventsCompanion event) =>
       into(events).insert(event);
@@ -259,6 +217,21 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         type: override.type,
         newTimeOfDay: Value(override.newTimeOfDay),
       ));
+
+  /// Every override falling in `[from, to]`, for the notification scheduler.
+  ///
+  /// A repeating trigger cannot know that one day was skipped or moved, so the
+  /// scheduler needs these to decide which rules can use one and which have to
+  /// be expanded.
+  Future<List<OverrideRow>> overridesBetween(
+    CalendarDate from,
+    CalendarDate to,
+  ) =>
+      (select(overrides)
+            ..where((o) =>
+                o.date.isBiggerOrEqualValue(from.epochDay) &
+                o.date.isSmallerOrEqualValue(to.epochDay)))
+          .get();
 
   Future<int> clearOverride(int eventId, CalendarDate date) =>
       (delete(overrides)

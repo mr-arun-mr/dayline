@@ -9,11 +9,15 @@ import '../model/event.dart';
 import '../model/recurrence.dart';
 import 'converters.dart';
 import 'events_dao.dart';
+import 'settings_dao.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [Events, Completions, Overrides], daos: [EventsDao])
+@DriftDatabase(
+  tables: [Events, Completions, Overrides, Settings],
+  daos: [EventsDao, SettingsDao],
+)
 class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase() : super(_openConnection());
 
@@ -21,10 +25,14 @@ class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      // v2 added the settings store.
+      if (from < 2) await m.createTable(settings);
+    },
     beforeOpen: (details) async {
       // Overrides and completions are meaningless without their event.
       await customStatement('PRAGMA foreign_keys = ON');

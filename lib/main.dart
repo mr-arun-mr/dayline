@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,9 +15,18 @@ Future<void> main() async {
   final database = DaylineDatabase();
   if (kDebugMode) await DebugSeed.populate(database);
 
+  final container = ProviderContainer(
+    overrides: [databaseProvider.overrideWithValue(database)],
+  );
+
+  // Set up the OS side before the first frame, so a cold start repairs
+  // anything a reboot or a timezone change knocked out.
+  await container.read(notificationServiceProvider).initialise();
+  unawaited(container.read(reminderSyncProvider).start());
+
   runApp(
-    ProviderScope(
-      overrides: [databaseProvider.overrideWithValue(database)],
+    UncontrolledProviderScope(
+      container: container,
       child: const DaylineApp(),
     ),
   );

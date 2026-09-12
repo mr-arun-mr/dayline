@@ -7,6 +7,7 @@ import '../../model/rule_description.dart';
 import '../../providers.dart';
 import '../edit/edit_event_screen.dart';
 import '../theme.dart';
+import 'battery_card.dart';
 import 'day_strip.dart';
 import 'next_up_card.dart';
 import 'now_divider.dart';
@@ -36,6 +37,7 @@ class TodayScreen extends ConsumerWidget {
                   ref.read(selectedDateProvider.notifier).select(date),
             ),
             const Divider(height: 1),
+            const BatteryOptimisationCard(),
             Expanded(
               child: switch (occurrences) {
                 AsyncData(:final value) => _DayList(

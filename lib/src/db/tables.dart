@@ -93,3 +93,18 @@ class Overrides extends Table {
   @override
   Set<Column> get primaryKey => {eventId, date};
 }
+
+/// Small key/value store for app-level settings.
+///
+/// In SQLite rather than a preferences plugin so that "all data on-device in
+/// one place" stays literally true, and so a future export carries settings
+/// along with the events.
+@DataClassName('SettingRow')
+class Settings extends Table {
+  TextColumn get key => text()();
+
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
