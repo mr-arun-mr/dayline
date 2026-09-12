@@ -7,7 +7,6 @@ import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
 import 'package:dayline/src/ui/today/next_up_card.dart';
 import 'package:dayline/src/ui/today/occurrence_tile.dart';
-import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -208,6 +207,50 @@ void main() {
       await settle(tester);
 
       expect(find.text('Move today'), findsOneWidget);
+
+      await close(tester);
+    });
+  });
+
+  group('moving one occurrence', () {
+    testWidgets('changes today and leaves the series alone', (tester) async {
+      final gym = await add('Gym', 7 * 60);
+      await db.eventsDao.setOverride(EventOverride(
+        eventId: gym,
+        date: today,
+        type: OverrideType.moved,
+        newTimeOfDay: 20 * 60,
+      ));
+
+      await pumpApp(tester);
+
+      // Moved to the evening, so it is no longer overdue at 08:42.
+      expect(find.text('OVERDUE  1'), findsNothing);
+      expect(find.text('20:00'), findsOneWidget);
+      expect(find.textContaining('Moved from 07:00'), findsOneWidget);
+
+      // Tomorrow is untouched.
+      final tomorrow =
+          await db.eventsDao.occurrencesForDate(today.addDays(1));
+      expect(tomorrow.single.effectiveTimeOfDay, 7 * 60);
+      expect(tomorrow.single.isMoved, isFalse);
+
+      await close(tester);
+    });
+
+    testWidgets('a skip override removes the day without touching the rule',
+        (tester) async {
+      final gym = await add('Gym', 7 * 60);
+      await db.eventsDao.deleteOccurrence(gym, today);
+
+      await pumpApp(tester);
+
+      expect(find.text('Gym'), findsNothing);
+      expect(find.text('Nothing today'), findsOneWidget);
+      expect(
+        (await db.eventsDao.occurrencesForDate(today.addDays(1))),
+        hasLength(1),
+      );
 
       await close(tester);
     });

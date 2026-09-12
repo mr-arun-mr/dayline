@@ -12,9 +12,6 @@ import '../theme.dart';
 import 'delete_scope_sheet.dart';
 
 /// Add or edit one rule.
-///
-/// Step 2 offers ONCE and DAILY only; the picker is built as a list of
-/// [Recurrence] values so the remaining three drop in without restructuring.
 class EditEventScreen extends ConsumerStatefulWidget {
   const EditEventScreen({
     this.eventId,
@@ -34,7 +31,7 @@ class EditEventScreen extends ConsumerStatefulWidget {
   /// the editor was reached without a day in mind.
   final CalendarDate? occurrenceDate;
 
-  static const supportedRecurrences = [Recurrence.once, Recurrence.daily];
+  static const supportedRecurrences = Recurrence.values;
 
   static Future<void> open(
     BuildContext context, {
@@ -67,6 +64,9 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
   CalendarDate? _endDate;
   List<int> _leadMinutes = const [15];
   int _colorValue = EventColors.fallback;
+  int _daysOfWeek = Weekdays.none;
+  int _interval = 2;
+  int? _dayOfMonth;
 
   bool _loading = true;
   bool _saving = false;
@@ -102,6 +102,9 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       _endDate = event.endDate;
       _leadMinutes = event.leadMinutes;
       _colorValue = event.colorValue;
+      _daysOfWeek = event.rule.daysOfWeek;
+      _interval = event.rule.interval;
+      _dayOfMonth = event.rule.dayOfMonth;
       _loading = false;
     });
   }
@@ -118,7 +121,18 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
     startDate: _startDate,
     timeOfDay: _timeOfDay,
     endDate: _recurrence == Recurrence.once ? null : _endDate,
+    daysOfWeek: _daysOfWeek,
+    interval: _interval,
+    dayOfMonth: _dayOfMonth,
   );
+
+  /// Whether the rule as drawn can ever produce an occurrence.
+  ///
+  /// The one way to build a rule that silently never fires is a weekly one
+  /// with no days ticked, so Save refuses it rather than saving something
+  /// inert.
+  bool get _isFireable =>
+      _recurrence != Recurrence.weekly || _daysOfWeek != Weekdays.none;
 
   @override
   Widget build(BuildContext context) {
@@ -174,8 +188,23 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
             const Divider(),
             _RecurrencePicker(
               value: _recurrence,
-              onChanged: (value) => setState(() => _recurrence = value),
+              onChanged: _changeRecurrence,
             ),
+            if (_recurrence == Recurrence.weekly)
+              _WeekdayPicker(
+                mask: _daysOfWeek,
+                onChanged: (mask) => setState(() => _daysOfWeek = mask),
+              ),
+            if (_recurrence == Recurrence.everyNDays)
+              _IntervalPicker(
+                interval: _interval,
+                onChanged: (value) => setState(() => _interval = value),
+              ),
+            if (_recurrence == Recurrence.monthly)
+              _MonthDayPicker(
+                dayOfMonth: _dayOfMonth ?? _startDate.day,
+                onChanged: (value) => setState(() => _dayOfMonth = value),
+              ),
             _Row(
               icon: _recurrence == Recurrence.once
                   ? Icons.event_outlined
@@ -269,8 +298,28 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
     return picked == null ? null : CalendarDate.fromDateTime(picked);
   }
 
+  /// Fills in sensible defaults when the shape of the rule changes, so
+  /// switching to Weekly does not land on a rule that never fires.
+  void _changeRecurrence(Recurrence value) {
+    setState(() {
+      _recurrence = value;
+      if (value == Recurrence.weekly && _daysOfWeek == Weekdays.none) {
+        _daysOfWeek = Weekdays.bit(_startDate.weekday);
+      }
+      if (value == Recurrence.monthly) {
+        _dayOfMonth ??= _startDate.day;
+      }
+    });
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!_isFireable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one day of the week')),
+      );
+      return;
+    }
     setState(() => _saving = true);
 
     final notes = _notesController.text.trim();
@@ -283,9 +332,15 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       timeOfDay: Value(_timeOfDay),
       durationMin: const Value(null),
       recurrence: Value(_recurrence),
-      daysOfWeek: const Value(Weekdays.none),
-      interval: const Value(1),
-      dayOfMonth: const Value(null),
+      daysOfWeek: Value(
+        _recurrence == Recurrence.weekly ? _daysOfWeek : Weekdays.none,
+      ),
+      interval: Value(_recurrence == Recurrence.everyNDays ? _interval : 1),
+      dayOfMonth: Value(
+        _recurrence == Recurrence.monthly
+            ? (_dayOfMonth ?? _startDate.day)
+            : null,
+      ),
       startDate: Value(_startDate),
       endDate: Value(_recurrence == Recurrence.once ? null : _endDate),
       leadMinutes: Value(_leadMinutes),
@@ -392,7 +447,7 @@ class _RecurrencePicker extends StatelessWidget {
 
   static const _labels = {
     Recurrence.once: 'Once',
-    Recurrence.daily: 'Every day',
+    Recurrence.daily: 'Daily',
     Recurrence.weekly: 'Weekly',
     Recurrence.everyNDays: 'Every N days',
     Recurrence.monthly: 'Monthly',
@@ -400,21 +455,234 @@ class _RecurrencePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(DaylineTheme.gutter, 12, 
-        DaylineTheme.gutter, 4),
-    child: SegmentedButton<Recurrence>(
-      segments: [
+    padding: const EdgeInsets.fromLTRB(
+      DaylineTheme.gutter,
+      14,
+      DaylineTheme.gutter,
+      4,
+    ),
+    // Chips rather than a segmented button: five options do not fit across a
+    // phone, and a segmented button has no way to wrap.
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
         for (final recurrence in EditEventScreen.supportedRecurrences)
-          ButtonSegment(
-            value: recurrence,
+          ChoiceChip(
             label: Text(_labels[recurrence]!),
+            selected: recurrence == value,
+            onSelected: (isOn) {
+              if (isOn) onChanged(recurrence);
+            },
           ),
       ],
-      selected: {value},
-      onSelectionChanged: (selection) => onChanged(selection.single),
-      showSelectedIcon: false,
     ),
   );
+}
+
+/// Which days of the week a WEEKLY rule fires on.
+class _WeekdayPicker extends StatelessWidget {
+  const _WeekdayPicker({required this.mask, required this.onChanged});
+
+  final int mask;
+  final ValueChanged<int> onChanged;
+
+  static const _initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  static const _names = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        10,
+        DaylineTheme.gutter,
+        6,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (var weekday = DateTime.monday;
+              weekday <= DateTime.sunday;
+              weekday++)
+            () {
+              final isOn = Weekdays.contains(mask, weekday);
+              return Semantics(
+                selected: isOn,
+                button: true,
+                label: _names[weekday - 1],
+                child: InkWell(
+                  key: ValueKey('weekday-$weekday'),
+                  onTap: () => onChanged(mask ^ Weekdays.bit(weekday)),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isOn ? scheme.primary : Colors.transparent,
+                      border: Border.all(
+                        color: isOn ? scheme.primary : scheme.outline,
+                      ),
+                    ),
+                    child: Text(
+                      _initials[weekday - 1],
+                      style: TextStyle(
+                        color: isOn ? scheme.onPrimary : scheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }(),
+        ],
+      ),
+    );
+  }
+}
+
+/// The N in "every N days".
+class _IntervalPicker extends StatelessWidget {
+  const _IntervalPicker({required this.interval, required this.onChanged});
+
+  final int interval;
+  final ValueChanged<int> onChanged;
+
+  static const _min = 2;
+  static const _max = 60;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        4,
+        DaylineTheme.gutter,
+        4,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.repeat_one, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 16),
+          Text('Every', style: theme.textTheme.titleMedium),
+          const Spacer(),
+          IconButton(
+            // An interval of 1 is Daily, which is its own option; letting it
+            // be picked here would give two ways to say the same thing.
+            onPressed: interval > _min ? () => onChanged(interval - 1) : null,
+            icon: const Icon(Icons.remove_circle_outline),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '$interval',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)
+                  .merge(monospacedFigures),
+            ),
+          ),
+          IconButton(
+            onPressed: interval < _max ? () => onChanged(interval + 1) : null,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
+          const SizedBox(width: 4),
+          Text('days', style: theme.textTheme.titleMedium),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which day of the month a MONTHLY rule lands on.
+class _MonthDayPicker extends StatelessWidget {
+  const _MonthDayPicker({required this.dayOfMonth, required this.onChanged});
+
+  final int dayOfMonth;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isLastDay = dayOfMonth == -1;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        10,
+        DaylineTheme.gutter,
+        6,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var day = 1; day <= 31; day++)
+                () {
+                  final isOn = day == dayOfMonth;
+                  return InkWell(
+                    onTap: () => onChanged(day),
+                    customBorder: const CircleBorder(),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isOn ? scheme.primary : Colors.transparent,
+                      ),
+                      child: Text(
+                        '$day',
+                        style: TextStyle(
+                          color: isOn ? scheme.onPrimary : scheme.onSurface,
+                          fontWeight:
+                              isOn ? FontWeight.w700 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  );
+                }(),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Distinct from picking 31: "the last day" means the 28th in
+          // February, where the 31st clamps back to it only as a fallback.
+          FilterChip(
+            label: const Text('Last day of the month'),
+            selected: isLastDay,
+            onSelected: (isOn) => onChanged(isOn ? -1 : 1),
+          ),
+          if (dayOfMonth > 28 && !isLastDay)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Short months fall back to their last day, so this never '
+                'skips a month.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The sentence that tells the user what they have actually built.

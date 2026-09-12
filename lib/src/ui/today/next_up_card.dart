@@ -92,6 +92,18 @@ class NextUpCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      // The card is usually the one occurrence the user is
+                      // looking at, so it has to admit when it has been moved.
+                      if (occurrence.isMoved) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Moved from '
+                          '${formatWallClock(occurrence.scheduledTimeOfDay)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

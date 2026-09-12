@@ -1,6 +1,5 @@
 import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/model/calendar_date.dart';
-import 'package:dayline/src/model/event.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/notifications/notification_payload.dart';
 import 'package:dayline/src/notifications/notification_service.dart';

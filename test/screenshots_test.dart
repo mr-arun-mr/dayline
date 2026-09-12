@@ -314,6 +314,36 @@ void main() {
     );
   });
 
+  testWidgets('weekly editor', (tester) async {
+    await shoot(
+      tester,
+      name: '11-weekly-light',
+      brightness: Brightness.light,
+      interact: (tester) async {
+        await tester.longPress(find.text('Water the plants'));
+        await _settle(tester);
+        await tester.tap(find.text('Edit series'));
+        await _settle(tester);
+        await tester.tap(find.text('Weekly'));
+      },
+    );
+  });
+
+  testWidgets('monthly editor', (tester) async {
+    await shoot(
+      tester,
+      name: '12-monthly-dark',
+      brightness: Brightness.dark,
+      interact: (tester) async {
+        await tester.longPress(find.text('Water the plants'));
+        await _settle(tester);
+        await tester.tap(find.text('Edit series'));
+        await _settle(tester);
+        await tester.tap(find.text('Monthly'));
+      },
+    );
+  });
+
   testWidgets('edit, once', (tester) async {
     await shoot(
       tester,
