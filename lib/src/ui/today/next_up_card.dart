@@ -12,10 +12,16 @@ import '../theme.dart';
 /// Larger than the rows around it and carrying a live countdown, because the
 /// question this screen answers most often is "how long have I got".
 class NextUpCard extends StatelessWidget {
-  const NextUpCard({required this.occurrence, this.onTap, super.key});
+  const NextUpCard({
+    required this.occurrence,
+    this.onTap,
+    this.onLongPress,
+    super.key,
+  });
 
   final Occurrence occurrence;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +42,7 @@ class NextUpCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Row(
@@ -55,15 +62,8 @@ class NextUpCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'NEXT UP',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
+                      // The section header above already says NEXT UP; the
+                      // card repeating it was one label too many.
                       Text(
                         occurrence.event.title,
                         style: theme.textTheme.headlineSmall?.copyWith(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../model/calendar_date.dart';
+import '../../model/day_summary.dart';
+import '../../model/event.dart';
 import '../../model/occurrence.dart';
 import '../../model/rule_description.dart';
 import '../../providers.dart';
@@ -9,9 +11,13 @@ import '../edit/edit_event_screen.dart';
 import '../theme.dart';
 import 'battery_card.dart';
 import 'day_strip.dart';
+import 'move_occurrence_sheet.dart';
 import 'next_up_card.dart';
 import 'now_divider.dart';
+import 'occurrence_sheet.dart';
 import 'occurrence_tile.dart';
+import 'progress_ring.dart';
+import 'section_header.dart';
 
 /// The home screen: one line of a day's events, in order.
 class TodayScreen extends ConsumerWidget {
@@ -24,12 +30,21 @@ class TodayScreen extends ConsumerWidget {
     final occurrences = ref.watch(occurrencesProvider(selected));
     final now = ref.watch(clockProvider)();
 
+    final summary = switch (occurrences) {
+      AsyncData(:final value) => DaySummary.from(
+        occurrences: value,
+        now: now,
+        isToday: selected == today,
+      ),
+      _ => null,
+    };
+
     return Scaffold(
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            _Header(today: today, selected: selected),
+            _Header(today: today, selected: selected, summary: summary),
             DayStrip(
               today: today,
               selected: selected,
@@ -40,11 +55,8 @@ class TodayScreen extends ConsumerWidget {
             const BatteryOptimisationCard(),
             Expanded(
               child: switch (occurrences) {
-                AsyncData(:final value) => _DayList(
-                  now: now,
-                  isToday: selected == today,
-                  occurrences: value,
-                ),
+                AsyncData() =>
+                  _DayList(summary: summary!, now: now, date: selected),
                 AsyncError(:final error) => _ErrorState(error: error),
                 _ => const Center(child: CircularProgressIndicator()),
               },
@@ -62,10 +74,15 @@ class TodayScreen extends ConsumerWidget {
 }
 
 class _Header extends ConsumerWidget {
-  const _Header({required this.today, required this.selected});
+  const _Header({
+    required this.today,
+    required this.selected,
+    required this.summary,
+  });
 
   final CalendarDate today;
   final CalendarDate selected;
+  final DaySummary? summary;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -82,7 +99,7 @@ class _Header extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(
         DaylineTheme.gutter,
         12,
-        DaylineTheme.gutter - 8,
+        DaylineTheme.gutter,
         4,
       ),
       child: Row(
@@ -100,10 +117,19 @@ class _Header extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
+                // One line rather than a Row of three: on a 390pt phone the
+                // date, the separator and "3 of 6 done" together overflow the
+                // space the progress ring leaves.
                 Text(
-                  relative == null
-                      ? '${selected.year}'
-                      : formatDayAndMonth(selected),
+                  [
+                    relative == null
+                        ? '${selected.year}'
+                        : formatDayAndMonth(selected),
+                    if (summary != null && summary!.total > 0)
+                      summary!.progressLabel,
+                  ].join('  ·  '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -116,6 +142,13 @@ class _Header extends ConsumerWidget {
               onPressed: () =>
                   ref.read(selectedDateProvider.notifier).goToToday(),
               child: const Text('Today'),
+            )
+          else if (summary != null && summary!.total > 0)
+            ProgressRing(
+              progress: summary!.progress,
+              doneCount: summary!.doneCount,
+              expected: summary!.expected,
+              isComplete: summary!.isComplete,
             ),
         ],
       ),
@@ -123,63 +156,134 @@ class _Header extends ConsumerWidget {
   }
 }
 
-/// The day itself: every occurrence in order, with the now line threaded
-/// through it and the next one up given a card.
-class _DayList extends StatelessWidget {
+/// Overdue, then the now line, then what is next, then the rest, then what has
+/// already been dealt with — folded away, because a finished thing should stop
+/// taking up room.
+class _DayList extends ConsumerStatefulWidget {
   const _DayList({
+    required this.summary,
     required this.now,
-    required this.isToday,
-    required this.occurrences,
+    required this.date,
   });
 
+  final DaySummary summary;
   final DateTime now;
-  final bool isToday;
-  final List<Occurrence> occurrences;
+  final CalendarDate date;
+
+  @override
+  ConsumerState<_DayList> createState() => _DayListState();
+}
+
+class _DayListState extends ConsumerState<_DayList> {
+  bool _doneExpanded = false;
+
+  Future<void> _toggleDone(Occurrence occurrence) async {
+    final dao = ref.read(eventsDaoProvider);
+    if (occurrence.isPending) {
+      await dao.setCompletion(
+        eventId: occurrence.eventId,
+        date: occurrence.date,
+        status: CompletionStatus.done,
+      );
+    } else {
+      await dao.clearCompletion(occurrence.eventId, occurrence.date);
+    }
+  }
+
+  Future<void> _openSheet(Occurrence occurrence) async {
+    final action = await showOccurrenceSheet(context, occurrence);
+    if (action == null || !mounted) return;
+
+    final dao = ref.read(eventsDaoProvider);
+    switch (action) {
+      case OccurrenceAction.markDone:
+        await dao.setCompletion(
+          eventId: occurrence.eventId,
+          date: occurrence.date,
+          status: CompletionStatus.done,
+        );
+      case OccurrenceAction.markSkipped:
+        await dao.setCompletion(
+          eventId: occurrence.eventId,
+          date: occurrence.date,
+          status: CompletionStatus.skipped,
+        );
+      case OccurrenceAction.clear:
+        await dao.clearCompletion(occurrence.eventId, occurrence.date);
+      case OccurrenceAction.move:
+        if (!mounted) return;
+        await showMoveOccurrenceSheet(context, ref, occurrence);
+      case OccurrenceAction.editSeries:
+        if (!mounted) return;
+        await EditEventScreen.open(
+          context,
+          eventId: occurrence.eventId,
+          occurrenceDate: occurrence.date,
+        );
+    }
+  }
+
+  Widget _tile(Occurrence occurrence, {required bool isPast}) => OccurrenceTile(
+    key: ValueKey('row-${occurrence.eventId}-${occurrence.date}'),
+    occurrence: occurrence,
+    isPast: isPast,
+    onTap: () => _toggleDone(occurrence),
+    onLongPress: () => _openSheet(occurrence),
+  );
 
   @override
   Widget build(BuildContext context) {
-    if (occurrences.isEmpty) return _EmptyState(isToday: isToday);
-
-    // The first thing that has not happened yet. Everything before it is past,
-    // and it is the one that gets the card.
-    final nextIndex = isToday
-        ? occurrences.indexWhere((o) => !o.isPast(now))
-        : -1;
+    final summary = widget.summary;
+    if (summary.isEmpty) return _EmptyState(isToday: summary.isToday);
 
     final children = <Widget>[];
-    for (var i = 0; i < occurrences.length; i++) {
-      final occurrence = occurrences[i];
-      if (i == nextIndex) children.add(NowDivider(now: now));
 
-      children.add(
-        i == nextIndex
-            ? NextUpCard(
-                key: ValueKey('next-${occurrence.eventId}'),
-                occurrence: occurrence,
-                onTap: () => EditEventScreen.open(
-                  context,
-                  eventId: occurrence.eventId,
-                  occurrenceDate: occurrence.date,
-                ),
-              )
-            : OccurrenceTile(
-                key: ValueKey('row-${occurrence.eventId}'),
-                occurrence: occurrence,
-                isPast: isToday && occurrence.isPast(now),
-                onTap: () => EditEventScreen.open(
-                  context,
-                  eventId: occurrence.eventId,
-                  occurrenceDate: occurrence.date,
-                ),
-              ),
+    if (summary.overdue.isNotEmpty) {
+      children.add(SectionHeader(
+        label: 'Overdue',
+        count: summary.overdue.length,
+        emphasis: true,
+      ));
+      children.addAll(
+        summary.overdue.map((o) => _tile(o, isPast: true)),
       );
     }
 
-    // Everything already happened: the line belongs at the bottom of the day.
-    if (isToday && nextIndex == -1) children.add(NowDivider(now: now));
+    if (summary.showsNowDivider) children.add(NowDivider(now: widget.now));
+
+    if (summary.nextUp case final next?) {
+      children.add(const SectionHeader(label: 'Next up'));
+      children.add(NextUpCard(
+        key: ValueKey('next-${next.eventId}'),
+        occurrence: next,
+        onTap: () => _toggleDone(next),
+        onLongPress: () => _openSheet(next),
+      ));
+    }
+
+    if (summary.later.isNotEmpty) {
+      children.add(SectionHeader(
+        label: summary.isToday ? 'Later today' : 'Planned',
+      ));
+      children.addAll(summary.later.map((o) => _tile(o, isPast: false)));
+    }
+
+    if (summary.done.isNotEmpty) {
+      children.add(SectionHeader(
+        label: 'Done',
+        count: summary.done.length,
+        trailing: TextButton(
+          onPressed: () => setState(() => _doneExpanded = !_doneExpanded),
+          child: Text(_doneExpanded ? 'Hide' : 'Show'),
+        ),
+      ));
+      if (_doneExpanded) {
+        children.addAll(summary.done.map((o) => _tile(o, isPast: true)));
+      }
+    }
 
     return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 96),
+      padding: const EdgeInsets.only(top: 4, bottom: 96),
       children: children,
     );
   }

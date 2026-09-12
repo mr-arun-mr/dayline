@@ -14,6 +14,7 @@ class OccurrenceTile extends StatelessWidget {
     required this.occurrence,
     required this.isPast,
     this.onTap,
+    this.onLongPress,
     super.key,
   });
 
@@ -22,7 +23,11 @@ class OccurrenceTile extends StatelessWidget {
   /// Whether its time has already gone by. Dims the row rather than hiding it.
   final bool isPast;
 
+  /// Marking done and back again.
   final VoidCallback? onTap;
+
+  /// The per-occurrence sheet.
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +38,7 @@ class OccurrenceTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: ConstrainedBox(
         constraints: const BoxConstraints(
           minHeight: DaylineTheme.rowMinHeight,
@@ -71,7 +77,14 @@ class OccurrenceTile extends StatelessWidget {
                     children: [
                       Text(
                         occurrence.event.title,
-                        style: theme.textTheme.titleMedium,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          decoration: occurrence.isPending
+                              ? null
+                              : TextDecoration.lineThrough,
+                          color: occurrence.isPending
+                              ? null
+                              : scheme.onSurfaceVariant,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -90,6 +103,8 @@ class OccurrenceTile extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _StatusMark(occurrence: occurrence),
             ],
           ),
         ),
@@ -99,6 +114,7 @@ class OccurrenceTile extends StatelessWidget {
 
   static String? _subtitle(Occurrence occurrence) {
     final parts = <String>[
+      if (occurrence.isSkipped) 'Skipped',
       if (occurrence.isMoved)
         'Moved from ${formatWallClock(occurrence.scheduledTimeOfDay)}',
       if (occurrence.event.durationMin case final minutes?)
@@ -140,4 +156,30 @@ class _TimeColumn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The tick, or the empty circle waiting for one.
+///
+/// A real target rather than decoration: the row's whole width is tappable,
+/// but the mark is where the eye goes, so it has to look pressable.
+class _StatusMark extends StatelessWidget {
+  const _StatusMark({required this.occurrence});
+
+  final Occurrence occurrence;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    if (occurrence.isSkipped) {
+      return Icon(Icons.remove_circle_outline,
+          size: 26, color: scheme.onSurfaceVariant);
+    }
+    if (occurrence.isDone) {
+      return Icon(Icons.check_circle, size: 26, color: _doneGreen);
+    }
+    return Icon(Icons.circle_outlined, size: 26, color: scheme.outline);
+  }
+
+  static const _doneGreen = Color(0xFF10B981);
 }

@@ -1,5 +1,6 @@
 import 'package:dayline/src/app.dart';
 import 'package:dayline/src/db/database.dart';
+import 'package:dayline/src/db/settings_dao.dart';
 import 'package:dayline/src/model/calendar_date.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
@@ -34,7 +35,27 @@ void main() {
 
   /// Pumps the app with "now" pinned. Not `pumpAndSettle`, because the editor's
   /// autofocused field blinks a caret that never settles.
-  Future<void> pumpApp(WidgetTester tester, {required DateTime now}) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    required DateTime now,
+    bool dismissBatteryCard = true,
+  }) async {
+    // Tests run as Android, where the one-time battery warning shows and eats
+    // a chunk of the viewport. Dealt with here so the other tests are about
+    // the day, not about the card; it has a test of its own below.
+    if (dismissBatteryCard) {
+      await db.settingsDao
+          .setFlag(SettingsDao.batteryCardDismissed, value: true);
+    }
+
+    // The default 800x600 test surface is the wrong shape for this screen, and
+    // with section headers added it pushes later rows out of the lazy list
+    // entirely — which reads as a missing widget rather than an off-screen one.
+    tester.view.physicalSize = const Size(390 * 3, 900 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -54,8 +75,8 @@ void main() {
     await db.close();
   }
 
-  testWidgets('shows the day in order, with the now line between past and '
-      'future', (tester) async {
+  testWidgets('sections the day, with the now line between past and future',
+      (tester) async {
     await add('Gym', 7 * 60);
     await add('Standup', 9 * 60 + 30);
     await add('Medication', 21 * 60);
@@ -63,9 +84,12 @@ void main() {
     await pumpApp(tester, now: DateTime(2026, 9, 11, 8, 42));
 
     expect(find.text('Today'), findsOneWidget);
+    expect(find.text('OVERDUE  1'), findsOneWidget);
+    expect(find.text('NEXT UP'), findsOneWidget);
+    expect(find.text('LATER TODAY'), findsOneWidget);
     expect(find.byType(NowDivider), findsOneWidget);
 
-    // Gym is behind the line, the other two ahead of it.
+    // Gym has gone; the other two have not.
     final divider = tester.getTopLeft(find.byType(NowDivider)).dy;
     expect(tester.getTopLeft(find.text('Gym')).dy, lessThan(divider));
     expect(tester.getTopLeft(find.text('Standup')).dy, greaterThan(divider));
@@ -93,18 +117,15 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('once the day is over there is no next up, and the line sits at '
-      'the bottom', (tester) async {
+  testWidgets('once the day is over everything left is overdue', (tester) async {
     await add('Gym', 7 * 60);
     await add('Medication', 21 * 60);
 
     await pumpApp(tester, now: DateTime(2026, 9, 11, 23, 30));
 
     expect(find.byType(NextUpCard), findsNothing);
+    expect(find.text('OVERDUE  2'), findsOneWidget);
     expect(find.byType(OccurrenceTile), findsNWidgets(2));
-
-    final divider = tester.getTopLeft(find.byType(NowDivider)).dy;
-    expect(tester.getTopLeft(find.text('Medication')).dy, lessThan(divider));
 
     await close(tester);
   });
@@ -118,9 +139,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 450));
 
     expect(find.text('Tomorrow'), findsOneWidget);
-    // "Now" does not exist on a day that is not today.
+    // "Now" does not exist on a day that is not today, so nothing can be
+    // overdue and nothing is singled out as next.
     expect(find.byType(NowDivider), findsNothing);
     expect(find.byType(NextUpCard), findsNothing);
+    expect(find.text('PLANNED'), findsOneWidget);
     expect(find.byType(OccurrenceTile), findsOneWidget);
 
     await close(tester);
@@ -177,6 +200,30 @@ void main() {
     await tester.pump();
 
     expect(find.text('Medication'), findsOneWidget);
+
+    await close(tester);
+  });
+
+  testWidgets('the battery warning shows once, then stays gone', (tester) async {
+    await add('Gym', 7 * 60);
+    await pumpApp(
+      tester,
+      now: DateTime(2026, 9, 11, 8, 42),
+      dismissBatteryCard: false,
+    );
+
+    expect(find.text('Keep reminders working'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Got it'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Keep reminders working'), findsNothing);
+    expect(
+      await db.settingsDao.flag(SettingsDao.batteryCardDismissed),
+      isTrue,
+      reason: 'it must not come back on the next launch',
+    );
 
     await close(tester);
   });

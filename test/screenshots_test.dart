@@ -6,7 +6,9 @@ import 'dart:ui' as ui;
 
 import 'package:dayline/src/app.dart';
 import 'package:dayline/src/db/database.dart';
+import 'package:dayline/src/db/settings_dao.dart';
 import 'package:dayline/src/model/calendar_date.dart';
+import 'package:dayline/src/model/event.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -37,8 +39,16 @@ void main() {
     Directory(outputDir).createSync(recursive: true);
   });
 
-  Future<DaylineDatabase> seededDatabase() async {
+  Future<DaylineDatabase> seededDatabase({
+    List<String> markDone = const [],
+    List<String> markSkipped = const [],
+    bool showBatteryCard = false,
+  }) async {
     final db = DaylineDatabase.forTesting(NativeDatabase.memory());
+    if (!showBatteryCard) {
+      await db.settingsDao
+          .setFlag(SettingsDao.batteryCardDismissed, value: true);
+    }
     Future<void> add({
       required String title,
       required int timeOfDay,
@@ -113,6 +123,21 @@ void main() {
       timeOfDay: 21 * 60,
       colorValue: 0xFF8B5CF6,
     );
+
+    for (final (titles, status) in [
+      (markDone, CompletionStatus.done),
+      (markSkipped, CompletionStatus.skipped),
+    ]) {
+      final all = await db.eventsDao.allEvents();
+      for (final title in titles) {
+        await db.eventsDao.setCompletion(
+          eventId: all.firstWhere((e) => e.title == title).id,
+          date: today,
+          status: status,
+          at: now,
+        );
+      }
+    }
     return db;
   }
 
@@ -121,6 +146,9 @@ void main() {
     required String name,
     required Brightness brightness,
     Future<void> Function(WidgetTester tester)? interact,
+    List<String> markDone = const [],
+    List<String> markSkipped = const [],
+    bool showBatteryCard = false,
   }) async {
     // Tests draw shadows as flat black silhouettes by default, which turns
     // every card and button into a heavy outline. These are pictures of the
@@ -129,7 +157,11 @@ void main() {
     // painting flags are back to default before tear-downs ever run.
     debugDisableShadows = false;
 
-    final db = await seededDatabase();
+    final db = await seededDatabase(
+      markDone: markDone,
+      markSkipped: markSkipped,
+      showBatteryCard: showBatteryCard,
+    );
 
     tester.view.physicalSize = const Size(390 * 3, 844 * 3);
     tester.view.devicePixelRatio = 3;
@@ -182,11 +214,51 @@ void main() {
   }
 
   testWidgets('today light', (tester) async {
-    await shoot(tester, name: '01-today-light', brightness: Brightness.light);
+    await shoot(
+      tester,
+      name: '01-today-light',
+      brightness: Brightness.light,
+      markDone: const ['Gym'],
+    );
   });
 
   testWidgets('today dark', (tester) async {
-    await shoot(tester, name: '02-today-dark', brightness: Brightness.dark);
+    await shoot(
+      tester,
+      name: '02-today-dark',
+      brightness: Brightness.dark,
+      markDone: const ['Gym'],
+    );
+  });
+
+  testWidgets('a day mostly dealt with', (tester) async {
+    await shoot(
+      tester,
+      name: '08-progress-light',
+      brightness: Brightness.light,
+      markDone: const ['Gym', 'Water the plants', 'Standup'],
+      markSkipped: const ['Physio exercises'],
+    );
+  });
+
+  testWidgets('the long-press sheet', (tester) async {
+    await shoot(
+      tester,
+      name: '09-occurrence-sheet-light',
+      brightness: Brightness.light,
+      interact: (tester) async {
+        await tester.longPress(find.text('Water the plants'));
+      },
+    );
+  });
+
+  testWidgets('the battery warning', (tester) async {
+    await shoot(
+      tester,
+      name: '10-battery-card-light',
+      brightness: Brightness.light,
+      showBatteryCard: true,
+    );
   });
 
   testWidgets('another day', (tester) async {
@@ -219,7 +291,10 @@ void main() {
       name: '05-edit-event-dark',
       brightness: Brightness.dark,
       interact: (tester) async {
-        await tester.tap(find.text('Standup'));
+        // Tapping a row marks it done now, so editing is behind the sheet.
+        await tester.longPress(find.text('Standup'));
+        await _settle(tester);
+        await tester.tap(find.text('Edit series'));
       },
     );
   });
@@ -230,7 +305,9 @@ void main() {
       name: '07-delete-scope-light',
       brightness: Brightness.light,
       interact: (tester) async {
-        await tester.tap(find.text('Physio exercises'));
+        await tester.longPress(find.text('Physio exercises'));
+        await _settle(tester);
+        await tester.tap(find.text('Edit series'));
         await _settle(tester);
         await tester.tap(find.byIcon(Icons.delete_outline));
       },
