@@ -337,7 +337,8 @@ flutter test --exclude-tags screenshots
   help card, background-location status, light/dark/system, and JSON export and
   import.
 - **Places & Dashboard** — places you add yourself, and what the time actually
-  went on. See below.
+  went on. Events tied to a place show planned against actual, mark themselves
+  done on arrival, and can file the visits you never planned. See below.
 
 ## Places and the dashboard
 
@@ -381,6 +382,44 @@ day is not a candidate at all. Arrivals are noticed while the app is closed,
 so this needs background location — without it the switch says so rather than
 quietly doing nothing.
 
+### Planned, and what actually happened
+
+Any event tied to a place shows both. The left-hand column keeps the time it
+was **planned** for, because that column is what makes the day scannable, and
+the line underneath says when you were **actually** there:
+
+```
+07:00  Gym
+       07:04 → 08:12
+```
+
+An open stay reads `07:04 → still there`. Long-press for the two side by side,
+with how long each was meant to take and how long it really did.
+
+When no stay matches, the row says nothing at all rather than "missed". No
+arrival recorded means one of two things — you did not go, or the phone was
+never watching — and the row cannot tell them apart. Guessing would be the app
+inventing a fact about your day.
+
+### Visits you never planned
+
+A place can also put its own stays onto the day, under **Add visits to my day**
+in the place editor. Walk into the office on a Saturday and the day gets an
+*Office* entry at the time you arrived, already ticked, with its length filled
+in when you leave.
+
+Off by default and per place — it is the one setting that writes rows you did
+not ask for, which is worth having for the gym and quietly wrong for home. It
+also writes nothing when the day already accounts for being there: a routine
+tied to that place within the usual two hours *is* that record, and a second
+row saying the same thing is the noise this is meant to remove.
+
+These entries are the day's record, not rules, so they stay out of All events,
+out of the dashboard's adherence, and out of the progress ring — "2 of 3 done"
+stays a count of what you meant to do. They go when the visit history does.
+Edit one and it becomes yours: an ordinary event that stops being tidied away
+with the history.
+
 ### What the dashboard answers
 
 The dashboard answers four questions:
@@ -409,8 +448,10 @@ uploaded — the app has no internet permission, so where the file goes next is
 entirely your choice.
 
 A completion the app made on arrival is exported as such, so a restore does not
-quietly turn it into something you ticked by hand. Older backups still import;
-they simply have no auto-completing rules in them.
+quietly turn it into something you ticked by hand, and an event written from a
+visit is restored still pointing at that same stay rather than at whatever now
+holds its old id. Older backups still import; they simply have none of this in
+them.
 
 The format is deliberately plain: dates as `yyyy-MM-dd`, times as minutes since
 midnight, no timestamps anywhere in the schedule. A backup taken in Sydney

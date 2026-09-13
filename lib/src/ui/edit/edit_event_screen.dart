@@ -367,6 +367,11 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       placeId: Value(_placeId),
       autoCompleteOnArrival:
           Value(_placeId != null && _autoCompleteOnArrival),
+      // Saving from the editor is the user taking ownership. A row the app
+      // wrote to record a visit becomes an ordinary event of theirs — it stops
+      // being tidied away with the visit history, and a later departure stops
+      // reaching in to rewrite its duration.
+      fromVisitId: const Value(null),
     );
 
     if (_isNew) {

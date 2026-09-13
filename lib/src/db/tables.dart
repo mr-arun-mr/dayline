@@ -62,6 +62,25 @@ class Events extends Table {
   /// a rule quietly waiting for an arrival that can never come.
   BoolColumn get autoCompleteOnArrival =>
       boolean().withDefault(const Constant(false))();
+
+  /// Set when the app wrote this rule itself to record a visit, rather than
+  /// the user writing it to plan something.
+  ///
+  /// It is what separates "somewhere I went" from "something I meant to do",
+  /// and the two must not be counted together: a visit is not an intention, so
+  /// these stay out of All Events, out of the dashboard's adherence, and out
+  /// of the progress ring — while still being on the day, which is the point
+  /// of writing them at all.
+  ///
+  /// Also the idempotency key: one stay produces one row however many times
+  /// the OS re-delivers the crossing. Cascades, because an event that is only
+  /// a record of a visit has nothing left to say once the visit is forgotten
+  /// — and clearing visit history is offered as exactly that. Editing one in
+  /// the editor clears this, which adopts it as an ordinary event of the
+  /// user's own.
+  IntColumn get fromVisitId => integer()
+      .nullable()
+      .customConstraint('REFERENCES visits(id) ON DELETE CASCADE')();
 }
 
 /// Written only when the user acts on an occurrence. An untouched day costs no
@@ -152,6 +171,14 @@ class Places extends Table {
   IntColumn get kind => integer().map(const PlaceKindConverter())();
 
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
+  /// Put a stay at this place onto the day it happened, as an event.
+  ///
+  /// Off by default and per place, because it is the one setting that writes
+  /// rows the user did not ask for. Sensible for the gym and the office;
+  /// wrong for home, which would otherwise file an event every evening.
+  BoolColumn get addVisitsToDay =>
+      boolean().withDefault(const Constant(false))();
 }
 
 /// One stay at a place. Written by the geofence callback, which may be running

@@ -36,6 +36,7 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
   int _colorValue = EventColors.fallback;
   double? _latitude;
   double? _longitude;
+  bool _addVisitsToDay = false;
 
   bool _loading = true;
   bool _locating = false;
@@ -69,6 +70,7 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
       _colorValue = place.colorValue;
       _latitude = place.latitude;
       _longitude = place.longitude;
+      _addVisitsToDay = place.addVisitsToDay;
       _loading = false;
     });
   }
@@ -121,6 +123,7 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
       colorValue: Value(_colorValue),
       kind: Value(_kind),
       isActive: const Value(true),
+      addVisitsToDay: Value(_addVisitsToDay),
     );
 
     if (_isNew) {
@@ -187,6 +190,11 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
               onChanged: (value) => setState(() => _radius = value),
             ),
             const Divider(),
+            _AddVisitsSwitch(
+              value: _addVisitsToDay,
+              onChanged: (value) => setState(() => _addVisitsToDay = value),
+            ),
+            const Divider(),
             _KindPicker(
               kind: _kind,
               onChanged: (value) => setState(() => _kind = value),
@@ -198,6 +206,85 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Add visits here to my day".
+///
+/// The only setting in Dayline that writes rows the user did not ask for, so
+/// it is off until asked for, and per place rather than global: worth having
+/// for the gym and the office, and quietly wrong for home, which would file an
+/// event every single evening.
+class _AddVisitsSwitch extends ConsumerWidget {
+  const _AddVisitsSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    // Null while it is still being read — no claim either way until it is
+    // known.
+    final hasBackground = ref.watch(backgroundLocationProvider).value;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DaylineTheme.gutter),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            key: const ValueKey('add-visits-switch'),
+            contentPadding: EdgeInsets.zero,
+            value: value,
+            onChanged: onChanged,
+            title: const Text('Add visits to my day'),
+            subtitle: const Text(
+              'Put a stay here onto the day it happened, so the timeline '
+              'shows where the time went and not only what was planned',
+            ),
+            secondary: Icon(
+              Icons.playlist_add,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (value) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Nothing is added when something on the day already covers '
+                'being here — a routine tied to this place is that record '
+                'already.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            if (hasBackground == false)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 16, color: theme.colorScheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Background location is off, so no arrivals are '
+                        'noticed and nothing will be added.',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.error),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }

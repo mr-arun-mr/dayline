@@ -115,9 +115,17 @@ class OccurrenceTile extends StatelessWidget {
   static String? _subtitle(Occurrence occurrence) {
     final parts = <String>[
       if (occurrence.isSkipped) 'Skipped',
+      // Why this row exists at all, for one the user did not write.
+      if (occurrence.isVisitRecord) 'Visited',
       // A tick the user does not remember making needs a reason attached, so
-      // this comes first: it is the answer to "why is that already done?".
-      if (occurrence.isDone && occurrence.isAutomatic) 'Done on arrival',
+      // this comes early: it is the answer to "why is that already done?".
+      if (occurrence.isDone &&
+          occurrence.isAutomatic &&
+          !occurrence.isVisitRecord)
+        'Done on arrival',
+      // The planned time is already the column on the left. This is the other
+      // half of the row's job: when the user was actually there.
+      ?formatActualTimes(occurrence),
       if (occurrence.isMoved)
         'Moved from ${formatWallClock(occurrence.scheduledTimeOfDay)}',
       if (occurrence.event.durationMin case final minutes?)
@@ -136,6 +144,28 @@ class OccurrenceTile extends StatelessWidget {
     return rest == 0 ? '${hours}h' : '${hours}h ${rest}m';
   }
 }
+
+/// "07:04 → 08:12" for a stay that is over, "07:04 → still there" for one that
+/// is not, and nothing at all when there is no stay to report.
+///
+/// Deliberately silent rather than negative when nothing matched. No arrival
+/// recorded means one of two things — the user did not go, or the phone was
+/// never watching — and the row has no way to tell them apart. Saying
+/// "missed" when background location was simply switched off would be the app
+/// inventing a fact about someone's day.
+String? formatActualTimes(Occurrence occurrence) {
+  final visit = occurrence.visit;
+  if (visit == null) return null;
+
+  final arrived = _clock(visit.arrivedAt);
+  final departed = visit.departedAt;
+  return departed == null
+      ? '$arrived → still there'
+      : '$arrived → ${_clock(departed)}';
+}
+
+String _clock(DateTime at) =>
+    formatWallClock(at.hour * 60 + at.minute);
 
 class _TimeColumn extends StatelessWidget {
   const _TimeColumn({required this.occurrence});

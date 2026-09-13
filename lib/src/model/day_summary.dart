@@ -77,15 +77,27 @@ class DaySummary {
   bool get isEmpty =>
       overdue.isEmpty && nextUp == null && later.isEmpty && done.isEmpty;
 
+  /// Everything on the day that was a plan.
+  ///
+  /// Rows the app wrote to record a visit are not counted. The ring answers
+  /// "how much of what I meant to do did I do", and a place the phone noticed
+  /// you were at was never on that list — counting it would inflate both
+  /// halves of the fraction and quietly make every day look better.
   int get total => overdue.length + (nextUp == null ? 0 : 1) + later.length +
-      done.length;
+      done.where((o) => !o.isVisitRecord).length;
 
   /// How many were actually done, as opposed to consciously skipped.
-  int get doneCount =>
-      done.where((o) => o.status == CompletionStatus.done).length;
+  int get doneCount => done
+      .where((o) => o.status == CompletionStatus.done && !o.isVisitRecord)
+      .length;
 
-  int get skippedCount =>
-      done.where((o) => o.status == CompletionStatus.skipped).length;
+  int get skippedCount => done
+      .where((o) => o.status == CompletionStatus.skipped && !o.isVisitRecord)
+      .length;
+
+  /// The visits filed onto this day. Shown, never counted.
+  List<Occurrence> get visitRecords =>
+      done.where((o) => o.isVisitRecord).toList();
 
   /// The denominator of "3 of 6 done".
   ///

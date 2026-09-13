@@ -59,10 +59,10 @@ class Backup {
     );
   }
 
-  /// Bumped to 2 when places and visits were added, and to 3 for
-  /// auto-completion on arrival. Older files still restore: every field added
-  /// since is optional and reads back as off.
-  static const formatVersion = 3;
+  /// Bumped to 2 when places and visits were added, to 3 for auto-completion
+  /// on arrival, and to 4 for visits filed onto the day as events. Older files
+  /// still restore: every field added since is optional and reads back as off.
+  static const formatVersion = 4;
   static const _appName = 'dayline';
 
   final List<BackupEvent> events;
@@ -126,6 +126,7 @@ class BackupEvent {
     this.isActive = true,
     this.placeId,
     this.autoCompleteOnArrival = false,
+    this.fromVisitId,
   });
 
   factory BackupEvent.fromJson(Map<String, dynamic> json) => BackupEvent(
@@ -148,6 +149,7 @@ class BackupEvent {
     isActive: json['isActive'] as bool? ?? true,
     placeId: _optionalInt(json['placeId']),
     autoCompleteOnArrival: json['autoCompleteOnArrival'] as bool? ?? false,
+    fromVisitId: _optionalInt(json['fromVisitId']),
   );
 
   final int id;
@@ -167,6 +169,10 @@ class BackupEvent {
   final int? placeId;
   final bool autoCompleteOnArrival;
 
+  /// The stay this event records, for a row the app wrote rather than the
+  /// user. Remapped through the file's visit ids on the way back in.
+  final int? fromVisitId;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -184,6 +190,7 @@ class BackupEvent {
     if (leadMinutes.isNotEmpty) 'leadMinutes': leadMinutes,
     if (!isActive) 'isActive': false,
     if (autoCompleteOnArrival) 'autoCompleteOnArrival': true,
+    if (fromVisitId != null) 'fromVisitId': fromVisitId,
   };
 }
 
@@ -265,6 +272,7 @@ class BackupPlace {
     required this.colorValue,
     required this.kind,
     this.isActive = true,
+    this.addVisitsToDay = false,
   });
 
   factory BackupPlace.fromJson(Map<String, dynamic> json) => BackupPlace(
@@ -276,6 +284,7 @@ class BackupPlace {
     colorValue: _int(json, 'colorValue'),
     kind: _placeKind(json['kind']),
     isActive: json['isActive'] as bool? ?? true,
+    addVisitsToDay: json['addVisitsToDay'] as bool? ?? false,
   );
 
   final int id;
@@ -286,6 +295,7 @@ class BackupPlace {
   final int colorValue;
   final PlaceKind kind;
   final bool isActive;
+  final bool addVisitsToDay;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -296,6 +306,7 @@ class BackupPlace {
     'colorValue': colorValue,
     'kind': kind.name,
     if (!isActive) 'isActive': false,
+    if (addVisitsToDay) 'addVisitsToDay': true,
   };
 }
 
@@ -309,20 +320,28 @@ class BackupVisit {
   const BackupVisit({
     required this.placeId,
     required this.arrivedAt,
+    this.id,
     this.departedAt,
   });
 
   factory BackupVisit.fromJson(Map<String, dynamic> json) => BackupVisit(
+    id: _optionalInt(json['id']),
     placeId: _int(json, 'placeId'),
     arrivedAt: _instant(json, 'arrivedAt'),
     departedAt: DateTime.tryParse(json['departedAt'] as String? ?? ''),
   );
+
+  /// Carried only so an event written to record this stay can find it again
+  /// after ids are reassigned on import. Absent in files written before
+  /// version 4, where nothing referred to a visit and nothing needs to.
+  final int? id;
 
   final int placeId;
   final DateTime arrivedAt;
   final DateTime? departedAt;
 
   Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
     'placeId': placeId,
     'arrivedAt': arrivedAt.toIso8601String(),
     if (departedAt != null) 'departedAt': departedAt!.toIso8601String(),

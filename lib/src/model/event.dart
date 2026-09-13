@@ -16,6 +16,7 @@ class Event {
     this.leadMinutes = const [],
     this.placeId,
     this.autoCompleteOnArrival = false,
+    this.fromVisitId,
   });
 
   final int id;
@@ -47,6 +48,15 @@ class Event {
   /// with no place — clearing the place does not clear it — and that rule
   /// simply never completes itself.
   bool get completesOnArrival => autoCompleteOnArrival && placeId != null;
+
+  /// The stay this event was written to record, if the app wrote it rather
+  /// than the user.
+  final int? fromVisitId;
+
+  /// Whether this is somewhere the user went rather than something they meant
+  /// to do. Both belong on the day; only the second is a plan, so only the
+  /// second is counted, listed under All events, or judged on the dashboard.
+  bool get isVisitRecord => fromVisitId != null;
 
   int get timeOfDay => rule.timeOfDay;
   Recurrence get recurrence => rule.recurrence;

@@ -25,21 +25,34 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
-  /// Builds a database in the shape v3 left behind.
+  /// The columns each version added, newest first.
   ///
-  /// Made by taking the current schema back a version rather than by writing
-  /// the old DDL out by hand, so it stays a real v3 database however the rest
-  /// of the schema moves on.
-  Future<void> writeVersion3Database() async {
+  /// Taking the current schema back a version at a time is how an old database
+  /// is built here, rather than writing the old DDL out by hand: whatever else
+  /// changes, what comes out is a real database of that version.
+  const addedBy = {
+    5: [
+      'ALTER TABLE places DROP COLUMN add_visits_to_day',
+      'ALTER TABLE events DROP COLUMN from_visit_id',
+    ],
+    4: [
+      'ALTER TABLE events DROP COLUMN auto_complete_on_arrival',
+      'ALTER TABLE completions DROP COLUMN is_automatic',
+    ],
+  };
+
+  /// Builds a database in the shape [version] left behind, with one event, one
+  /// completion and one place in it.
+  Future<void> writeOldDatabase(int version) async {
     final db = DaylineDatabase.forTesting(NativeDatabase(file));
     await db.customStatement('SELECT 1'); // Force the open, and the migration.
 
-    await db.customStatement(
-      'ALTER TABLE events DROP COLUMN auto_complete_on_arrival',
-    );
-    await db.customStatement(
-      'ALTER TABLE completions DROP COLUMN is_automatic',
-    );
+    for (final entry in addedBy.entries) {
+      if (entry.key <= version) continue;
+      for (final statement in entry.value) {
+        await db.customStatement(statement);
+      }
+    }
 
     await db.customStatement(
       'INSERT INTO events (id, title, color_value, time_of_day, recurrence, '
@@ -54,10 +67,17 @@ void main() {
         DateTime(2026, 9, 11, 7, 4).millisecondsSinceEpoch ~/ 1000,
       ],
     );
+    await db.customStatement(
+      'INSERT INTO places (id, name, latitude, longitude, radius_meters, '
+      'color_value, kind, is_active) VALUES (1, ?, ?, ?, ?, ?, 2, 1)',
+      ['Gym', 51.5, -0.12, 150.0, 0xFF3B82F6],
+    );
 
-    await db.customStatement('PRAGMA user_version = 3');
+    await db.customStatement('PRAGMA user_version = $version');
     await db.close();
   }
+
+  Future<void> writeVersion3Database() => writeOldDatabase(3);
 
   test('a v3 database opens, and keeps everything in it', () async {
     await writeVersion3Database();
@@ -96,6 +116,31 @@ void main() {
     expect((await db.select(db.completions).get()).single.isAutomatic, isFalse);
     expect((await db.eventsDao.occurrencesForDate(today)).single.isAutomatic,
         isFalse);
+  });
+
+  test('a v3 database does not start filing visits as events', () async {
+    // Two versions of "off by default", and both matter: an upgrade must not
+    // begin writing rows into days the user has already lived through.
+    await writeVersion3Database();
+
+    final db = DaylineDatabase.forTesting(NativeDatabase(file));
+    addTearDown(db.close);
+
+    expect((await db.placesDao.allPlaces()).single.addVisitsToDay, isFalse);
+    expect((await db.eventsDao.allEvents()).single.isVisitRecord, isFalse);
+  });
+
+  test('a v4 database upgrades too, straight from where it is', () async {
+    // Not everyone upgrades one version at a time.
+    await writeOldDatabase(4);
+
+    final db = DaylineDatabase.forTesting(NativeDatabase(file));
+    addTearDown(db.close);
+
+    final event = (await db.eventsDao.allEvents()).single;
+    expect(event.title, 'Gym');
+    expect(event.isVisitRecord, isFalse);
+    expect((await db.placesDao.allPlaces()).single.addVisitsToDay, isFalse);
   });
 
   test('the upgraded database takes new rows with the new columns', () async {

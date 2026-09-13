@@ -3,10 +3,12 @@ import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/db/settings_dao.dart';
 import 'package:dayline/src/model/calendar_date.dart';
 import 'package:dayline/src/model/event.dart';
+import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
 import 'package:dayline/src/ui/today/next_up_card.dart';
 import 'package:dayline/src/ui/today/occurrence_tile.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,6 +198,154 @@ void main() {
 
       expect(await db.select(db.completions).get(), isEmpty);
       expect(find.text('OVERDUE  1'), findsOneWidget);
+
+      await close(tester);
+    });
+  });
+
+  group('planned against actual', () {
+    Future<int> addPlace(String name) =>
+        db.placesDao.insertPlace(PlacesCompanion.insert(
+          name: name,
+          latitude: 51.5,
+          longitude: -0.12,
+          colorValue: 0xFF3B82F6,
+          kind: PlaceKind.gym,
+        ));
+
+    testWidgets('the row shows when you were actually there', (tester) async {
+      final gym = await addPlace('Gym');
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 0xFF3B82F6,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today.addDays(-10),
+        placeId: Value(gym),
+      ));
+      await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7, 4));
+      await db.placesDao.recordDeparture(gym, DateTime(2026, 9, 11, 8, 12));
+
+      await pumpApp(tester);
+
+      // The planned time keeps the column; the actual goes underneath.
+      expect(find.text('07:00'), findsOneWidget);
+      expect(find.textContaining('07:04 → 08:12'), findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('an open stay says still there', (tester) async {
+      final gym = await addPlace('Gym');
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 0xFF3B82F6,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today.addDays(-10),
+        placeId: Value(gym),
+      ));
+      await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7, 4));
+
+      await pumpApp(tester);
+
+      expect(find.textContaining('07:04 → still there'), findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('the sheet puts the two side by side', (tester) async {
+      final gym = await addPlace('Gym');
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 0xFF3B82F6,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today.addDays(-10),
+        placeId: Value(gym),
+      ));
+      await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7, 4));
+      await db.placesDao.recordDeparture(gym, DateTime(2026, 9, 11, 8, 12));
+
+      await pumpApp(tester);
+      await tester.longPress(find.byType(OccurrenceTile).first);
+      await settle(tester);
+
+      expect(find.text('PLANNED'), findsOneWidget);
+      expect(find.text('ACTUALLY THERE'), findsOneWidget);
+      expect(find.text('1h 8m'), findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('a row with no place says nothing extra', (tester) async {
+      await add('Gym', 7 * 60);
+
+      await pumpApp(tester);
+      await tester.longPress(find.byType(OccurrenceTile).first);
+      await settle(tester);
+
+      expect(find.text('PLANNED'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('a visit filed onto the day says it was a visit',
+        (tester) async {
+      final gym = await addPlace('Gym');
+      final visitId =
+          await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7, 4));
+      final place = (await db.placesDao.placeById(gym))!;
+      await db.eventsDao.recordVisitAsEvent(
+        place: Place(
+          id: place.id,
+          name: place.name,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          radiusMeters: place.radiusMeters,
+          colorValue: place.colorValue,
+          addVisitsToDay: true,
+        ),
+        visitId: visitId,
+        at: DateTime(2026, 9, 11, 7, 4),
+      );
+
+      await pumpApp(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Show'));
+      await settle(tester);
+
+      expect(find.textContaining('Visited'), findsOneWidget);
+      // Not also "Done on arrival" — the row is the arrival.
+      expect(find.textContaining('Done on arrival'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('the ring counts plans, not places you went', (tester) async {
+      final gym = await addPlace('Gym');
+      await add('Standup', 9 * 60 + 30);
+      final visitId =
+          await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7));
+      final place = (await db.placesDao.placeById(gym))!;
+      await db.eventsDao.recordVisitAsEvent(
+        place: Place(
+          id: place.id,
+          name: place.name,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          radiusMeters: place.radiusMeters,
+          colorValue: place.colorValue,
+          addVisitsToDay: true,
+        ),
+        visitId: visitId,
+        at: DateTime(2026, 9, 11, 7),
+      );
+
+      await pumpApp(tester);
+
+      // One standup to do, and it is not done. The gym visit is on the day
+      // but was never on the list.
+      expect(find.text('0/1'), findsOneWidget);
 
       await close(tester);
     });

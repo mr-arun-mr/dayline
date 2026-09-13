@@ -408,6 +408,86 @@ void main() {
           isFalse);
     });
 
+    test('a visit filed onto the day keeps pointing at its own stay',
+        () async {
+      // Ids are reassigned on the way in. A row that survives pointing at
+      // whatever now holds that id would attach one day's visit to another.
+      final gym = await addGymPlace();
+      await db.placesDao.recordArrival(gym, DateTime(2026, 8, 12, 7));
+      await db.placesDao.recordDeparture(gym, DateTime(2026, 8, 12, 8));
+      final noise = await db.placesDao.recordArrival(
+        gym,
+        DateTime(2026, 8, 12, 19),
+      );
+      final visitId = (await db.placesDao.visitsForPlace(gym)).first.id;
+      expect(visitId, isNot(noise));
+
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 1,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.once,
+        startDate: today,
+        placeId: Value(gym),
+        fromVisitId: Value(visitId),
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      final event = (await db.select(db.events).get()).single;
+      final stays = await db.placesDao.visitsForPlace(
+        (await db.placesDao.allPlaces()).single.id,
+      );
+      final linked = stays.firstWhere((v) => v.id == event.fromVisitId);
+      expect(linked.arrivedAt, DateTime(2026, 8, 12, 7),
+          reason: 'the morning stay, not the evening one');
+    });
+
+    test('a place that files its visits restores still doing so', () async {
+      await db.placesDao.insertPlace(PlacesCompanion.insert(
+        name: 'Gym',
+        latitude: 51.5,
+        longitude: -0.12,
+        colorValue: 1,
+        kind: PlaceKind.gym,
+        addVisitsToDay: const Value(true),
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      expect((await db.placesDao.allPlaces()).single.addVisitsToDay, isTrue);
+    });
+
+    test('a visit link that cannot be resolved is dropped, not guessed at',
+        () async {
+      // The event stays — as an ordinary one of the user's own, which is
+      // exactly what an unlinked visit record is.
+      const raw = '{"app":"dayline","version":4,"events":[{"id":1,'
+          '"title":"Gym","colorValue":1,"timeOfDay":420,"recurrence":"once",'
+          '"startDate":"2026-08-12","fromVisitId":77}],"places":[],'
+          '"visits":[]}';
+
+      await backups.importJson(raw);
+
+      final event = (await db.select(db.events).get()).single;
+      expect(event.title, 'Gym');
+      expect(event.fromVisitId, isNull);
+    });
+
+    test('a version 3 file restores with nothing filing visits', () async {
+      const raw = '{"app":"dayline","version":3,"places":[{"id":1,'
+          '"name":"Gym","latitude":51.5,"longitude":-0.12,"colorValue":1,'
+          '"kind":"gym"}],"events":[],"visits":[{"placeId":1,'
+          '"arrivedAt":"2026-08-12T07:00:00.000"}]}';
+
+      final result = await backups.importJson(raw);
+
+      expect(result.visits, 1, reason: 'visits without ids still restore');
+      expect((await db.placesDao.allPlaces()).single.addVisitsToDay, isFalse);
+    });
+
     test('a visit whose place is missing is dropped', () async {
       const orphaned = '{"app":"dayline","version":2,"events":[],"places":[],'
           '"visits":[{"placeId":9,"arrivedAt":"2026-09-11T07:00:00.000"}]}';

@@ -27,7 +27,7 @@ class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -45,6 +45,11 @@ class DaylineDatabase extends _$DaylineDatabase {
       if (from < 4) {
         await m.addColumn(events, events.autoCompleteOnArrival);
         await m.addColumn(completions, completions.isAutomatic);
+      }
+      // v5 added putting a visit on the day as an event of its own.
+      if (from < 5) {
+        await m.addColumn(places, places.addVisitsToDay);
+        await m.addColumn(events, events.fromVisitId);
       }
     },
     beforeOpen: (details) async {

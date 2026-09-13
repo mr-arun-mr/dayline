@@ -65,6 +65,7 @@ class BackupService {
             isActive: e.isActive,
             placeId: e.placeId,
             autoCompleteOnArrival: e.autoCompleteOnArrival,
+            fromVisitId: e.fromVisitId,
           ),
       ],
       places: [
@@ -78,11 +79,13 @@ class BackupService {
             colorValue: p.colorValue,
             kind: p.kind,
             isActive: p.isActive,
+            addVisitsToDay: p.addVisitsToDay,
           ),
       ],
       visits: [
         for (final v in visits)
           BackupVisit(
+            id: v.id,
             placeId: v.placeId,
             arrivedAt: v.arrivedAt,
             departedAt: v.departedAt,
@@ -153,22 +156,28 @@ class BackupService {
             colorValue: place.colorValue,
             kind: place.kind,
             isActive: Value(place.isActive),
+            addVisitsToDay: Value(place.addVisitsToDay),
           ),
         );
         placeIdMap[place.id] = newId;
         places++;
       }
 
+      // Visits are remapped like everything else, so an event written to
+      // record one can be pointed back at the same stay rather than at
+      // whatever now happens to hold that id.
+      final visitIdMap = <int, int>{};
       for (final visit in backup.visits) {
         final placeId = placeIdMap[visit.placeId];
         if (placeId == null) continue;
-        await _db.into(_db.visits).insert(
+        final newId = await _db.into(_db.visits).insert(
           VisitsCompanion.insert(
             placeId: placeId,
             arrivedAt: visit.arrivedAt,
             departedAt: Value(visit.departedAt),
           ),
         );
+        if (visit.id case final oldId?) visitIdMap[oldId] = newId;
         visits++;
       }
 
@@ -195,6 +204,14 @@ class BackupService {
               event.placeId == null ? null : placeIdMap[event.placeId],
             ),
             autoCompleteOnArrival: Value(event.autoCompleteOnArrival),
+            // A link that cannot be resolved is dropped rather than guessed
+            // at: the event stays, as an ordinary one of the user's own, which
+            // is exactly what an unlinked visit record is.
+            fromVisitId: Value(
+              event.fromVisitId == null
+                  ? null
+                  : visitIdMap[event.fromVisitId],
+            ),
           ),
         );
         idMap[event.id] = newId;

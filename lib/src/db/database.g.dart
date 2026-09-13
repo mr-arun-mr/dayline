@@ -103,6 +103,21 @@ class $PlacesTable extends Places with TableInfo<$PlacesTable, PlaceRow> {
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _addVisitsToDayMeta = const VerificationMeta(
+    'addVisitsToDay',
+  );
+  @override
+  late final GeneratedColumn<bool> addVisitsToDay = GeneratedColumn<bool>(
+    'add_visits_to_day',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("add_visits_to_day" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -113,6 +128,7 @@ class $PlacesTable extends Places with TableInfo<$PlacesTable, PlaceRow> {
     colorValue,
     kind,
     isActive,
+    addVisitsToDay,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -176,6 +192,15 @@ class $PlacesTable extends Places with TableInfo<$PlacesTable, PlaceRow> {
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
+    if (data.containsKey('add_visits_to_day')) {
+      context.handle(
+        _addVisitsToDayMeta,
+        addVisitsToDay.isAcceptableOrUnknown(
+          data['add_visits_to_day']!,
+          _addVisitsToDayMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -219,6 +244,10 @@ class $PlacesTable extends Places with TableInfo<$PlacesTable, PlaceRow> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
+      addVisitsToDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}add_visits_to_day'],
+      )!,
     );
   }
 
@@ -242,6 +271,13 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
   final int colorValue;
   final PlaceKind kind;
   final bool isActive;
+
+  /// Put a stay at this place onto the day it happened, as an event.
+  ///
+  /// Off by default and per place, because it is the one setting that writes
+  /// rows the user did not ask for. Sensible for the gym and the office;
+  /// wrong for home, which would otherwise file an event every evening.
+  final bool addVisitsToDay;
   const PlaceRow({
     required this.id,
     required this.name,
@@ -251,6 +287,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
     required this.colorValue,
     required this.kind,
     required this.isActive,
+    required this.addVisitsToDay,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -265,6 +302,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
       map['kind'] = Variable<int>($PlacesTable.$converterkind.toSql(kind));
     }
     map['is_active'] = Variable<bool>(isActive);
+    map['add_visits_to_day'] = Variable<bool>(addVisitsToDay);
     return map;
   }
 
@@ -278,6 +316,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
       colorValue: Value(colorValue),
       kind: Value(kind),
       isActive: Value(isActive),
+      addVisitsToDay: Value(addVisitsToDay),
     );
   }
 
@@ -295,6 +334,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
       colorValue: serializer.fromJson<int>(json['colorValue']),
       kind: serializer.fromJson<PlaceKind>(json['kind']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      addVisitsToDay: serializer.fromJson<bool>(json['addVisitsToDay']),
     );
   }
   @override
@@ -309,6 +349,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
       'colorValue': serializer.toJson<int>(colorValue),
       'kind': serializer.toJson<PlaceKind>(kind),
       'isActive': serializer.toJson<bool>(isActive),
+      'addVisitsToDay': serializer.toJson<bool>(addVisitsToDay),
     };
   }
 
@@ -321,6 +362,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
     int? colorValue,
     PlaceKind? kind,
     bool? isActive,
+    bool? addVisitsToDay,
   }) => PlaceRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -330,6 +372,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
     colorValue: colorValue ?? this.colorValue,
     kind: kind ?? this.kind,
     isActive: isActive ?? this.isActive,
+    addVisitsToDay: addVisitsToDay ?? this.addVisitsToDay,
   );
   PlaceRow copyWithCompanion(PlacesCompanion data) {
     return PlaceRow(
@@ -345,6 +388,9 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
           : this.colorValue,
       kind: data.kind.present ? data.kind.value : this.kind,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      addVisitsToDay: data.addVisitsToDay.present
+          ? data.addVisitsToDay.value
+          : this.addVisitsToDay,
     );
   }
 
@@ -358,7 +404,8 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
           ..write('radiusMeters: $radiusMeters, ')
           ..write('colorValue: $colorValue, ')
           ..write('kind: $kind, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('addVisitsToDay: $addVisitsToDay')
           ..write(')'))
         .toString();
   }
@@ -373,6 +420,7 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
     colorValue,
     kind,
     isActive,
+    addVisitsToDay,
   );
   @override
   bool operator ==(Object other) =>
@@ -385,7 +433,8 @@ class PlaceRow extends DataClass implements Insertable<PlaceRow> {
           other.radiusMeters == this.radiusMeters &&
           other.colorValue == this.colorValue &&
           other.kind == this.kind &&
-          other.isActive == this.isActive);
+          other.isActive == this.isActive &&
+          other.addVisitsToDay == this.addVisitsToDay);
 }
 
 class PlacesCompanion extends UpdateCompanion<PlaceRow> {
@@ -397,6 +446,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
   final Value<int> colorValue;
   final Value<PlaceKind> kind;
   final Value<bool> isActive;
+  final Value<bool> addVisitsToDay;
   const PlacesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -406,6 +456,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
     this.colorValue = const Value.absent(),
     this.kind = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.addVisitsToDay = const Value.absent(),
   });
   PlacesCompanion.insert({
     this.id = const Value.absent(),
@@ -416,6 +467,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
     required int colorValue,
     required PlaceKind kind,
     this.isActive = const Value.absent(),
+    this.addVisitsToDay = const Value.absent(),
   }) : name = Value(name),
        latitude = Value(latitude),
        longitude = Value(longitude),
@@ -430,6 +482,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
     Expression<int>? colorValue,
     Expression<int>? kind,
     Expression<bool>? isActive,
+    Expression<bool>? addVisitsToDay,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -440,6 +493,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
       if (colorValue != null) 'color_value': colorValue,
       if (kind != null) 'kind': kind,
       if (isActive != null) 'is_active': isActive,
+      if (addVisitsToDay != null) 'add_visits_to_day': addVisitsToDay,
     });
   }
 
@@ -452,6 +506,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
     Value<int>? colorValue,
     Value<PlaceKind>? kind,
     Value<bool>? isActive,
+    Value<bool>? addVisitsToDay,
   }) {
     return PlacesCompanion(
       id: id ?? this.id,
@@ -462,6 +517,7 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
       colorValue: colorValue ?? this.colorValue,
       kind: kind ?? this.kind,
       isActive: isActive ?? this.isActive,
+      addVisitsToDay: addVisitsToDay ?? this.addVisitsToDay,
     );
   }
 
@@ -494,6 +550,9 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (addVisitsToDay.present) {
+      map['add_visits_to_day'] = Variable<bool>(addVisitsToDay.value);
+    }
     return map;
   }
 
@@ -507,7 +566,316 @@ class PlacesCompanion extends UpdateCompanion<PlaceRow> {
           ..write('radiusMeters: $radiusMeters, ')
           ..write('colorValue: $colorValue, ')
           ..write('kind: $kind, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('addVisitsToDay: $addVisitsToDay')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VisitsTable extends Visits with TableInfo<$VisitsTable, VisitRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VisitsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _placeIdMeta = const VerificationMeta(
+    'placeId',
+  );
+  @override
+  late final GeneratedColumn<int> placeId = GeneratedColumn<int>(
+    'place_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL REFERENCES places(id) ON DELETE CASCADE',
+  );
+  static const VerificationMeta _arrivedAtMeta = const VerificationMeta(
+    'arrivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> arrivedAt = GeneratedColumn<DateTime>(
+    'arrived_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _departedAtMeta = const VerificationMeta(
+    'departedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> departedAt = GeneratedColumn<DateTime>(
+    'departed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, placeId, arrivedAt, departedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visits';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VisitRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('place_id')) {
+      context.handle(
+        _placeIdMeta,
+        placeId.isAcceptableOrUnknown(data['place_id']!, _placeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_placeIdMeta);
+    }
+    if (data.containsKey('arrived_at')) {
+      context.handle(
+        _arrivedAtMeta,
+        arrivedAt.isAcceptableOrUnknown(data['arrived_at']!, _arrivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_arrivedAtMeta);
+    }
+    if (data.containsKey('departed_at')) {
+      context.handle(
+        _departedAtMeta,
+        departedAt.isAcceptableOrUnknown(data['departed_at']!, _departedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisitRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisitRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      placeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}place_id'],
+      )!,
+      arrivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}arrived_at'],
+      )!,
+      departedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}departed_at'],
+      ),
+    );
+  }
+
+  @override
+  $VisitsTable createAlias(String alias) {
+    return $VisitsTable(attachedDatabase, alias);
+  }
+}
+
+class VisitRow extends DataClass implements Insertable<VisitRow> {
+  final int id;
+  final int placeId;
+
+  /// Real instants, not wall clock: a visit is a thing that happened at a
+  /// moment, unlike a schedule, which is a thing that happens at a time.
+  final DateTime arrivedAt;
+
+  /// Null while the device is still inside the geofence.
+  final DateTime? departedAt;
+  const VisitRow({
+    required this.id,
+    required this.placeId,
+    required this.arrivedAt,
+    this.departedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['place_id'] = Variable<int>(placeId);
+    map['arrived_at'] = Variable<DateTime>(arrivedAt);
+    if (!nullToAbsent || departedAt != null) {
+      map['departed_at'] = Variable<DateTime>(departedAt);
+    }
+    return map;
+  }
+
+  VisitsCompanion toCompanion(bool nullToAbsent) {
+    return VisitsCompanion(
+      id: Value(id),
+      placeId: Value(placeId),
+      arrivedAt: Value(arrivedAt),
+      departedAt: departedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(departedAt),
+    );
+  }
+
+  factory VisitRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisitRow(
+      id: serializer.fromJson<int>(json['id']),
+      placeId: serializer.fromJson<int>(json['placeId']),
+      arrivedAt: serializer.fromJson<DateTime>(json['arrivedAt']),
+      departedAt: serializer.fromJson<DateTime?>(json['departedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'placeId': serializer.toJson<int>(placeId),
+      'arrivedAt': serializer.toJson<DateTime>(arrivedAt),
+      'departedAt': serializer.toJson<DateTime?>(departedAt),
+    };
+  }
+
+  VisitRow copyWith({
+    int? id,
+    int? placeId,
+    DateTime? arrivedAt,
+    Value<DateTime?> departedAt = const Value.absent(),
+  }) => VisitRow(
+    id: id ?? this.id,
+    placeId: placeId ?? this.placeId,
+    arrivedAt: arrivedAt ?? this.arrivedAt,
+    departedAt: departedAt.present ? departedAt.value : this.departedAt,
+  );
+  VisitRow copyWithCompanion(VisitsCompanion data) {
+    return VisitRow(
+      id: data.id.present ? data.id.value : this.id,
+      placeId: data.placeId.present ? data.placeId.value : this.placeId,
+      arrivedAt: data.arrivedAt.present ? data.arrivedAt.value : this.arrivedAt,
+      departedAt: data.departedAt.present
+          ? data.departedAt.value
+          : this.departedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisitRow(')
+          ..write('id: $id, ')
+          ..write('placeId: $placeId, ')
+          ..write('arrivedAt: $arrivedAt, ')
+          ..write('departedAt: $departedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, placeId, arrivedAt, departedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisitRow &&
+          other.id == this.id &&
+          other.placeId == this.placeId &&
+          other.arrivedAt == this.arrivedAt &&
+          other.departedAt == this.departedAt);
+}
+
+class VisitsCompanion extends UpdateCompanion<VisitRow> {
+  final Value<int> id;
+  final Value<int> placeId;
+  final Value<DateTime> arrivedAt;
+  final Value<DateTime?> departedAt;
+  const VisitsCompanion({
+    this.id = const Value.absent(),
+    this.placeId = const Value.absent(),
+    this.arrivedAt = const Value.absent(),
+    this.departedAt = const Value.absent(),
+  });
+  VisitsCompanion.insert({
+    this.id = const Value.absent(),
+    required int placeId,
+    required DateTime arrivedAt,
+    this.departedAt = const Value.absent(),
+  }) : placeId = Value(placeId),
+       arrivedAt = Value(arrivedAt);
+  static Insertable<VisitRow> custom({
+    Expression<int>? id,
+    Expression<int>? placeId,
+    Expression<DateTime>? arrivedAt,
+    Expression<DateTime>? departedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (placeId != null) 'place_id': placeId,
+      if (arrivedAt != null) 'arrived_at': arrivedAt,
+      if (departedAt != null) 'departed_at': departedAt,
+    });
+  }
+
+  VisitsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? placeId,
+    Value<DateTime>? arrivedAt,
+    Value<DateTime?>? departedAt,
+  }) {
+    return VisitsCompanion(
+      id: id ?? this.id,
+      placeId: placeId ?? this.placeId,
+      arrivedAt: arrivedAt ?? this.arrivedAt,
+      departedAt: departedAt ?? this.departedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (placeId.present) {
+      map['place_id'] = Variable<int>(placeId.value);
+    }
+    if (arrivedAt.present) {
+      map['arrived_at'] = Variable<DateTime>(arrivedAt.value);
+    }
+    if (departedAt.present) {
+      map['departed_at'] = Variable<DateTime>(departedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisitsCompanion(')
+          ..write('id: $id, ')
+          ..write('placeId: $placeId, ')
+          ..write('arrivedAt: $arrivedAt, ')
+          ..write('departedAt: $departedAt')
           ..write(')'))
         .toString();
   }
@@ -700,6 +1068,18 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
         ),
         defaultValue: const Constant(false),
       );
+  static const VerificationMeta _fromVisitIdMeta = const VerificationMeta(
+    'fromVisitId',
+  );
+  @override
+  late final GeneratedColumn<int> fromVisitId = GeneratedColumn<int>(
+    'from_visit_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'REFERENCES visits(id) ON DELETE CASCADE',
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -718,6 +1098,7 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
     isActive,
     placeId,
     autoCompleteOnArrival,
+    fromVisitId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -818,6 +1199,15 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
         ),
       );
     }
+    if (data.containsKey('from_visit_id')) {
+      context.handle(
+        _fromVisitIdMeta,
+        fromVisitId.isAcceptableOrUnknown(
+          data['from_visit_id']!,
+          _fromVisitIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -899,6 +1289,10 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
         DriftSqlType.bool,
         data['${effectivePrefix}auto_complete_on_arrival'],
       )!,
+      fromVisitId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_visit_id'],
+      ),
     );
   }
 
@@ -960,6 +1354,23 @@ class EventRow extends DataClass implements Insertable<EventRow> {
   /// picked — but stored independently so that clearing the place cannot leave
   /// a rule quietly waiting for an arrival that can never come.
   final bool autoCompleteOnArrival;
+
+  /// Set when the app wrote this rule itself to record a visit, rather than
+  /// the user writing it to plan something.
+  ///
+  /// It is what separates "somewhere I went" from "something I meant to do",
+  /// and the two must not be counted together: a visit is not an intention, so
+  /// these stay out of All Events, out of the dashboard's adherence, and out
+  /// of the progress ring — while still being on the day, which is the point
+  /// of writing them at all.
+  ///
+  /// Also the idempotency key: one stay produces one row however many times
+  /// the OS re-delivers the crossing. Cascades, because an event that is only
+  /// a record of a visit has nothing left to say once the visit is forgotten
+  /// — and clearing visit history is offered as exactly that. Editing one in
+  /// the editor clears this, which adopts it as an ordinary event of the
+  /// user's own.
+  final int? fromVisitId;
   const EventRow({
     required this.id,
     required this.title,
@@ -977,6 +1388,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     required this.isActive,
     this.placeId,
     required this.autoCompleteOnArrival,
+    this.fromVisitId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1021,6 +1433,9 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       map['place_id'] = Variable<int>(placeId);
     }
     map['auto_complete_on_arrival'] = Variable<bool>(autoCompleteOnArrival);
+    if (!nullToAbsent || fromVisitId != null) {
+      map['from_visit_id'] = Variable<int>(fromVisitId);
+    }
     return map;
   }
 
@@ -1052,6 +1467,9 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           ? const Value.absent()
           : Value(placeId),
       autoCompleteOnArrival: Value(autoCompleteOnArrival),
+      fromVisitId: fromVisitId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fromVisitId),
     );
   }
 
@@ -1079,6 +1497,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       autoCompleteOnArrival: serializer.fromJson<bool>(
         json['autoCompleteOnArrival'],
       ),
+      fromVisitId: serializer.fromJson<int?>(json['fromVisitId']),
     );
   }
   @override
@@ -1101,6 +1520,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       'isActive': serializer.toJson<bool>(isActive),
       'placeId': serializer.toJson<int?>(placeId),
       'autoCompleteOnArrival': serializer.toJson<bool>(autoCompleteOnArrival),
+      'fromVisitId': serializer.toJson<int?>(fromVisitId),
     };
   }
 
@@ -1121,6 +1541,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     bool? isActive,
     Value<int?> placeId = const Value.absent(),
     bool? autoCompleteOnArrival,
+    Value<int?> fromVisitId = const Value.absent(),
   }) => EventRow(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -1138,6 +1559,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     isActive: isActive ?? this.isActive,
     placeId: placeId.present ? placeId.value : this.placeId,
     autoCompleteOnArrival: autoCompleteOnArrival ?? this.autoCompleteOnArrival,
+    fromVisitId: fromVisitId.present ? fromVisitId.value : this.fromVisitId,
   );
   EventRow copyWithCompanion(EventsCompanion data) {
     return EventRow(
@@ -1171,6 +1593,9 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       autoCompleteOnArrival: data.autoCompleteOnArrival.present
           ? data.autoCompleteOnArrival.value
           : this.autoCompleteOnArrival,
+      fromVisitId: data.fromVisitId.present
+          ? data.fromVisitId.value
+          : this.fromVisitId,
     );
   }
 
@@ -1192,7 +1617,8 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           ..write('leadMinutes: $leadMinutes, ')
           ..write('isActive: $isActive, ')
           ..write('placeId: $placeId, ')
-          ..write('autoCompleteOnArrival: $autoCompleteOnArrival')
+          ..write('autoCompleteOnArrival: $autoCompleteOnArrival, ')
+          ..write('fromVisitId: $fromVisitId')
           ..write(')'))
         .toString();
   }
@@ -1215,6 +1641,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     isActive,
     placeId,
     autoCompleteOnArrival,
+    fromVisitId,
   );
   @override
   bool operator ==(Object other) =>
@@ -1235,7 +1662,8 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           other.leadMinutes == this.leadMinutes &&
           other.isActive == this.isActive &&
           other.placeId == this.placeId &&
-          other.autoCompleteOnArrival == this.autoCompleteOnArrival);
+          other.autoCompleteOnArrival == this.autoCompleteOnArrival &&
+          other.fromVisitId == this.fromVisitId);
 }
 
 class EventsCompanion extends UpdateCompanion<EventRow> {
@@ -1255,6 +1683,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
   final Value<bool> isActive;
   final Value<int?> placeId;
   final Value<bool> autoCompleteOnArrival;
+  final Value<int?> fromVisitId;
   const EventsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -1272,6 +1701,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     this.isActive = const Value.absent(),
     this.placeId = const Value.absent(),
     this.autoCompleteOnArrival = const Value.absent(),
+    this.fromVisitId = const Value.absent(),
   });
   EventsCompanion.insert({
     this.id = const Value.absent(),
@@ -1290,6 +1720,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     this.isActive = const Value.absent(),
     this.placeId = const Value.absent(),
     this.autoCompleteOnArrival = const Value.absent(),
+    this.fromVisitId = const Value.absent(),
   }) : title = Value(title),
        colorValue = Value(colorValue),
        timeOfDay = Value(timeOfDay),
@@ -1312,6 +1743,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     Expression<bool>? isActive,
     Expression<int>? placeId,
     Expression<bool>? autoCompleteOnArrival,
+    Expression<int>? fromVisitId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1331,6 +1763,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
       if (placeId != null) 'place_id': placeId,
       if (autoCompleteOnArrival != null)
         'auto_complete_on_arrival': autoCompleteOnArrival,
+      if (fromVisitId != null) 'from_visit_id': fromVisitId,
     });
   }
 
@@ -1351,6 +1784,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     Value<bool>? isActive,
     Value<int?>? placeId,
     Value<bool>? autoCompleteOnArrival,
+    Value<int?>? fromVisitId,
   }) {
     return EventsCompanion(
       id: id ?? this.id,
@@ -1370,6 +1804,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
       placeId: placeId ?? this.placeId,
       autoCompleteOnArrival:
           autoCompleteOnArrival ?? this.autoCompleteOnArrival,
+      fromVisitId: fromVisitId ?? this.fromVisitId,
     );
   }
 
@@ -1434,6 +1869,9 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
         autoCompleteOnArrival.value,
       );
     }
+    if (fromVisitId.present) {
+      map['from_visit_id'] = Variable<int>(fromVisitId.value);
+    }
     return map;
   }
 
@@ -1455,7 +1893,8 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
           ..write('leadMinutes: $leadMinutes, ')
           ..write('isActive: $isActive, ')
           ..write('placeId: $placeId, ')
-          ..write('autoCompleteOnArrival: $autoCompleteOnArrival')
+          ..write('autoCompleteOnArrival: $autoCompleteOnArrival, ')
+          ..write('fromVisitId: $fromVisitId')
           ..write(')'))
         .toString();
   }
@@ -2373,323 +2812,15 @@ class SettingsCompanion extends UpdateCompanion<SettingRow> {
   }
 }
 
-class $VisitsTable extends Visits with TableInfo<$VisitsTable, VisitRow> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $VisitsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _placeIdMeta = const VerificationMeta(
-    'placeId',
-  );
-  @override
-  late final GeneratedColumn<int> placeId = GeneratedColumn<int>(
-    'place_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES places(id) ON DELETE CASCADE',
-  );
-  static const VerificationMeta _arrivedAtMeta = const VerificationMeta(
-    'arrivedAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> arrivedAt = GeneratedColumn<DateTime>(
-    'arrived_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _departedAtMeta = const VerificationMeta(
-    'departedAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> departedAt = GeneratedColumn<DateTime>(
-    'departed_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [id, placeId, arrivedAt, departedAt];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'visits';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<VisitRow> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('place_id')) {
-      context.handle(
-        _placeIdMeta,
-        placeId.isAcceptableOrUnknown(data['place_id']!, _placeIdMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_placeIdMeta);
-    }
-    if (data.containsKey('arrived_at')) {
-      context.handle(
-        _arrivedAtMeta,
-        arrivedAt.isAcceptableOrUnknown(data['arrived_at']!, _arrivedAtMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_arrivedAtMeta);
-    }
-    if (data.containsKey('departed_at')) {
-      context.handle(
-        _departedAtMeta,
-        departedAt.isAcceptableOrUnknown(data['departed_at']!, _departedAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  VisitRow map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VisitRow(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      placeId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}place_id'],
-      )!,
-      arrivedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}arrived_at'],
-      )!,
-      departedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}departed_at'],
-      ),
-    );
-  }
-
-  @override
-  $VisitsTable createAlias(String alias) {
-    return $VisitsTable(attachedDatabase, alias);
-  }
-}
-
-class VisitRow extends DataClass implements Insertable<VisitRow> {
-  final int id;
-  final int placeId;
-
-  /// Real instants, not wall clock: a visit is a thing that happened at a
-  /// moment, unlike a schedule, which is a thing that happens at a time.
-  final DateTime arrivedAt;
-
-  /// Null while the device is still inside the geofence.
-  final DateTime? departedAt;
-  const VisitRow({
-    required this.id,
-    required this.placeId,
-    required this.arrivedAt,
-    this.departedAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['place_id'] = Variable<int>(placeId);
-    map['arrived_at'] = Variable<DateTime>(arrivedAt);
-    if (!nullToAbsent || departedAt != null) {
-      map['departed_at'] = Variable<DateTime>(departedAt);
-    }
-    return map;
-  }
-
-  VisitsCompanion toCompanion(bool nullToAbsent) {
-    return VisitsCompanion(
-      id: Value(id),
-      placeId: Value(placeId),
-      arrivedAt: Value(arrivedAt),
-      departedAt: departedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(departedAt),
-    );
-  }
-
-  factory VisitRow.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VisitRow(
-      id: serializer.fromJson<int>(json['id']),
-      placeId: serializer.fromJson<int>(json['placeId']),
-      arrivedAt: serializer.fromJson<DateTime>(json['arrivedAt']),
-      departedAt: serializer.fromJson<DateTime?>(json['departedAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'placeId': serializer.toJson<int>(placeId),
-      'arrivedAt': serializer.toJson<DateTime>(arrivedAt),
-      'departedAt': serializer.toJson<DateTime?>(departedAt),
-    };
-  }
-
-  VisitRow copyWith({
-    int? id,
-    int? placeId,
-    DateTime? arrivedAt,
-    Value<DateTime?> departedAt = const Value.absent(),
-  }) => VisitRow(
-    id: id ?? this.id,
-    placeId: placeId ?? this.placeId,
-    arrivedAt: arrivedAt ?? this.arrivedAt,
-    departedAt: departedAt.present ? departedAt.value : this.departedAt,
-  );
-  VisitRow copyWithCompanion(VisitsCompanion data) {
-    return VisitRow(
-      id: data.id.present ? data.id.value : this.id,
-      placeId: data.placeId.present ? data.placeId.value : this.placeId,
-      arrivedAt: data.arrivedAt.present ? data.arrivedAt.value : this.arrivedAt,
-      departedAt: data.departedAt.present
-          ? data.departedAt.value
-          : this.departedAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VisitRow(')
-          ..write('id: $id, ')
-          ..write('placeId: $placeId, ')
-          ..write('arrivedAt: $arrivedAt, ')
-          ..write('departedAt: $departedAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, placeId, arrivedAt, departedAt);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is VisitRow &&
-          other.id == this.id &&
-          other.placeId == this.placeId &&
-          other.arrivedAt == this.arrivedAt &&
-          other.departedAt == this.departedAt);
-}
-
-class VisitsCompanion extends UpdateCompanion<VisitRow> {
-  final Value<int> id;
-  final Value<int> placeId;
-  final Value<DateTime> arrivedAt;
-  final Value<DateTime?> departedAt;
-  const VisitsCompanion({
-    this.id = const Value.absent(),
-    this.placeId = const Value.absent(),
-    this.arrivedAt = const Value.absent(),
-    this.departedAt = const Value.absent(),
-  });
-  VisitsCompanion.insert({
-    this.id = const Value.absent(),
-    required int placeId,
-    required DateTime arrivedAt,
-    this.departedAt = const Value.absent(),
-  }) : placeId = Value(placeId),
-       arrivedAt = Value(arrivedAt);
-  static Insertable<VisitRow> custom({
-    Expression<int>? id,
-    Expression<int>? placeId,
-    Expression<DateTime>? arrivedAt,
-    Expression<DateTime>? departedAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (placeId != null) 'place_id': placeId,
-      if (arrivedAt != null) 'arrived_at': arrivedAt,
-      if (departedAt != null) 'departed_at': departedAt,
-    });
-  }
-
-  VisitsCompanion copyWith({
-    Value<int>? id,
-    Value<int>? placeId,
-    Value<DateTime>? arrivedAt,
-    Value<DateTime?>? departedAt,
-  }) {
-    return VisitsCompanion(
-      id: id ?? this.id,
-      placeId: placeId ?? this.placeId,
-      arrivedAt: arrivedAt ?? this.arrivedAt,
-      departedAt: departedAt ?? this.departedAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (placeId.present) {
-      map['place_id'] = Variable<int>(placeId.value);
-    }
-    if (arrivedAt.present) {
-      map['arrived_at'] = Variable<DateTime>(arrivedAt.value);
-    }
-    if (departedAt.present) {
-      map['departed_at'] = Variable<DateTime>(departedAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('VisitsCompanion(')
-          ..write('id: $id, ')
-          ..write('placeId: $placeId, ')
-          ..write('arrivedAt: $arrivedAt, ')
-          ..write('departedAt: $departedAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
 abstract class _$DaylineDatabase extends GeneratedDatabase {
   _$DaylineDatabase(QueryExecutor e) : super(e);
   $DaylineDatabaseManager get managers => $DaylineDatabaseManager(this);
   late final $PlacesTable places = $PlacesTable(this);
+  late final $VisitsTable visits = $VisitsTable(this);
   late final $EventsTable events = $EventsTable(this);
   late final $CompletionsTable completions = $CompletionsTable(this);
   late final $OverridesTable overrides = $OverridesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
-  late final $VisitsTable visits = $VisitsTable(this);
   late final Index idxCompletionsDate = Index(
     'idx_completions_date',
     'CREATE INDEX idx_completions_date ON completions (date)',
@@ -2715,11 +2846,11 @@ abstract class _$DaylineDatabase extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     places,
+    visits,
     events,
     completions,
     overrides,
     settings,
-    visits,
     idxCompletionsDate,
     idxOverridesDate,
     idxVisitsPlace,
@@ -2732,7 +2863,21 @@ abstract class _$DaylineDatabase extends GeneratedDatabase {
         'places',
         limitUpdateKind: UpdateKind.delete,
       ),
+      result: [TableUpdate('visits', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'places',
+        limitUpdateKind: UpdateKind.delete,
+      ),
       result: [TableUpdate('events', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'visits',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('events', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -2748,13 +2893,6 @@ abstract class _$DaylineDatabase extends GeneratedDatabase {
       ),
       result: [TableUpdate('overrides', kind: UpdateKind.delete)],
     ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'places',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('visits', kind: UpdateKind.delete)],
-    ),
   ]);
 }
 
@@ -2768,6 +2906,7 @@ typedef $$PlacesTableCreateCompanionBuilder =
       required int colorValue,
       required PlaceKind kind,
       Value<bool> isActive,
+      Value<bool> addVisitsToDay,
     });
 typedef $$PlacesTableUpdateCompanionBuilder =
     PlacesCompanion Function({
@@ -2779,30 +2918,12 @@ typedef $$PlacesTableUpdateCompanionBuilder =
       Value<int> colorValue,
       Value<PlaceKind> kind,
       Value<bool> isActive,
+      Value<bool> addVisitsToDay,
     });
 
 final class $$PlacesTableReferences
     extends BaseReferences<_$DaylineDatabase, $PlacesTable, PlaceRow> {
   $$PlacesTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static MultiTypedResultKey<$EventsTable, List<EventRow>> _eventsRefsTable(
-    _$DaylineDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.events,
-    aliasName: $_aliasNameGenerator(db.places.id, db.events.placeId),
-  );
-
-  $$EventsTableProcessedTableManager get eventsRefs {
-    final manager = $$EventsTableTableManager(
-      $_db,
-      $_db.events,
-    ).filter((f) => f.placeId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_eventsRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
 
   static MultiTypedResultKey<$VisitsTable, List<VisitRow>> _visitsRefsTable(
     _$DaylineDatabase db,
@@ -2818,6 +2939,25 @@ final class $$PlacesTableReferences
     ).filter((f) => f.placeId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_visitsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$EventsTable, List<EventRow>> _eventsRefsTable(
+    _$DaylineDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.events,
+    aliasName: $_aliasNameGenerator(db.places.id, db.events.placeId),
+  );
+
+  $$EventsTableProcessedTableManager get eventsRefs {
+    final manager = $$EventsTableTableManager(
+      $_db,
+      $_db.events,
+    ).filter((f) => f.placeId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_eventsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2874,30 +3014,10 @@ class $$PlacesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  Expression<bool> eventsRefs(
-    Expression<bool> Function($$EventsTableFilterComposer f) f,
-  ) {
-    final $$EventsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.events,
-      getReferencedColumn: (t) => t.placeId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$EventsTableFilterComposer(
-            $db: $db,
-            $table: $db.events,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
+  ColumnFilters<bool> get addVisitsToDay => $composableBuilder(
+    column: $table.addVisitsToDay,
+    builder: (column) => ColumnFilters(column),
+  );
 
   Expression<bool> visitsRefs(
     Expression<bool> Function($$VisitsTableFilterComposer f) f,
@@ -2915,6 +3035,31 @@ class $$PlacesTableFilterComposer
           }) => $$VisitsTableFilterComposer(
             $db: $db,
             $table: $db.visits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> eventsRefs(
+    Expression<bool> Function($$EventsTableFilterComposer f) f,
+  ) {
+    final $$EventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.placeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableFilterComposer(
+            $db: $db,
+            $table: $db.events,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2973,6 +3118,11 @@ class $$PlacesTableOrderingComposer
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get addVisitsToDay => $composableBuilder(
+    column: $table.addVisitsToDay,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlacesTableAnnotationComposer
@@ -3012,30 +3162,10 @@ class $$PlacesTableAnnotationComposer
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
 
-  Expression<T> eventsRefs<T extends Object>(
-    Expression<T> Function($$EventsTableAnnotationComposer a) f,
-  ) {
-    final $$EventsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.events,
-      getReferencedColumn: (t) => t.placeId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$EventsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.events,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
+  GeneratedColumn<bool> get addVisitsToDay => $composableBuilder(
+    column: $table.addVisitsToDay,
+    builder: (column) => column,
+  );
 
   Expression<T> visitsRefs<T extends Object>(
     Expression<T> Function($$VisitsTableAnnotationComposer a) f,
@@ -3061,6 +3191,31 @@ class $$PlacesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> eventsRefs<T extends Object>(
+    Expression<T> Function($$EventsTableAnnotationComposer a) f,
+  ) {
+    final $$EventsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.placeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$PlacesTableTableManager
@@ -3076,7 +3231,7 @@ class $$PlacesTableTableManager
           $$PlacesTableUpdateCompanionBuilder,
           (PlaceRow, $$PlacesTableReferences),
           PlaceRow,
-          PrefetchHooks Function({bool eventsRefs, bool visitsRefs})
+          PrefetchHooks Function({bool visitsRefs, bool eventsRefs})
         > {
   $$PlacesTableTableManager(_$DaylineDatabase db, $PlacesTable table)
     : super(
@@ -3099,6 +3254,7 @@ class $$PlacesTableTableManager
                 Value<int> colorValue = const Value.absent(),
                 Value<PlaceKind> kind = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<bool> addVisitsToDay = const Value.absent(),
               }) => PlacesCompanion(
                 id: id,
                 name: name,
@@ -3108,6 +3264,7 @@ class $$PlacesTableTableManager
                 colorValue: colorValue,
                 kind: kind,
                 isActive: isActive,
+                addVisitsToDay: addVisitsToDay,
               ),
           createCompanionCallback:
               ({
@@ -3119,6 +3276,7 @@ class $$PlacesTableTableManager
                 required int colorValue,
                 required PlaceKind kind,
                 Value<bool> isActive = const Value.absent(),
+                Value<bool> addVisitsToDay = const Value.absent(),
               }) => PlacesCompanion.insert(
                 id: id,
                 name: name,
@@ -3128,6 +3286,7 @@ class $$PlacesTableTableManager
                 colorValue: colorValue,
                 kind: kind,
                 isActive: isActive,
+                addVisitsToDay: addVisitsToDay,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3135,28 +3294,16 @@ class $$PlacesTableTableManager
                     (e.readTable(table), $$PlacesTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({eventsRefs = false, visitsRefs = false}) {
+          prefetchHooksCallback: ({visitsRefs = false, eventsRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
-                if (eventsRefs) db.events,
                 if (visitsRefs) db.visits,
+                if (eventsRefs) db.events,
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
                 return [
-                  if (eventsRefs)
-                    await $_getPrefetchedData<PlaceRow, $PlacesTable, EventRow>(
-                      currentTable: table,
-                      referencedTable: $$PlacesTableReferences._eventsRefsTable(
-                        db,
-                      ),
-                      managerFromTypedResult: (p0) =>
-                          $$PlacesTableReferences(db, table, p0).eventsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.placeId == item.id),
-                      typedResults: items,
-                    ),
                   if (visitsRefs)
                     await $_getPrefetchedData<PlaceRow, $PlacesTable, VisitRow>(
                       currentTable: table,
@@ -3165,6 +3312,18 @@ class $$PlacesTableTableManager
                       ),
                       managerFromTypedResult: (p0) =>
                           $$PlacesTableReferences(db, table, p0).visitsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.placeId == item.id),
+                      typedResults: items,
+                    ),
+                  if (eventsRefs)
+                    await $_getPrefetchedData<PlaceRow, $PlacesTable, EventRow>(
+                      currentTable: table,
+                      referencedTable: $$PlacesTableReferences._eventsRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$PlacesTableReferences(db, table, p0).eventsRefs,
                       referencedItemsForCurrentItem: (item, referencedItems) =>
                           referencedItems.where((e) => e.placeId == item.id),
                       typedResults: items,
@@ -3189,7 +3348,383 @@ typedef $$PlacesTableProcessedTableManager =
       $$PlacesTableUpdateCompanionBuilder,
       (PlaceRow, $$PlacesTableReferences),
       PlaceRow,
-      PrefetchHooks Function({bool eventsRefs, bool visitsRefs})
+      PrefetchHooks Function({bool visitsRefs, bool eventsRefs})
+    >;
+typedef $$VisitsTableCreateCompanionBuilder =
+    VisitsCompanion Function({
+      Value<int> id,
+      required int placeId,
+      required DateTime arrivedAt,
+      Value<DateTime?> departedAt,
+    });
+typedef $$VisitsTableUpdateCompanionBuilder =
+    VisitsCompanion Function({
+      Value<int> id,
+      Value<int> placeId,
+      Value<DateTime> arrivedAt,
+      Value<DateTime?> departedAt,
+    });
+
+final class $$VisitsTableReferences
+    extends BaseReferences<_$DaylineDatabase, $VisitsTable, VisitRow> {
+  $$VisitsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PlacesTable _placeIdTable(_$DaylineDatabase db) => db.places
+      .createAlias($_aliasNameGenerator(db.visits.placeId, db.places.id));
+
+  $$PlacesTableProcessedTableManager get placeId {
+    final $_column = $_itemColumn<int>('place_id')!;
+
+    final manager = $$PlacesTableTableManager(
+      $_db,
+      $_db.places,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_placeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$EventsTable, List<EventRow>> _eventsRefsTable(
+    _$DaylineDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.events,
+    aliasName: $_aliasNameGenerator(db.visits.id, db.events.fromVisitId),
+  );
+
+  $$EventsTableProcessedTableManager get eventsRefs {
+    final manager = $$EventsTableTableManager(
+      $_db,
+      $_db.events,
+    ).filter((f) => f.fromVisitId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_eventsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$VisitsTableFilterComposer
+    extends Composer<_$DaylineDatabase, $VisitsTable> {
+  $$VisitsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get arrivedAt => $composableBuilder(
+    column: $table.arrivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get departedAt => $composableBuilder(
+    column: $table.departedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PlacesTableFilterComposer get placeId {
+    final $$PlacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.placeId,
+      referencedTable: $db.places,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlacesTableFilterComposer(
+            $db: $db,
+            $table: $db.places,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> eventsRefs(
+    Expression<bool> Function($$EventsTableFilterComposer f) f,
+  ) {
+    final $$EventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.fromVisitId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableFilterComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$VisitsTableOrderingComposer
+    extends Composer<_$DaylineDatabase, $VisitsTable> {
+  $$VisitsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get arrivedAt => $composableBuilder(
+    column: $table.arrivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get departedAt => $composableBuilder(
+    column: $table.departedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PlacesTableOrderingComposer get placeId {
+    final $$PlacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.placeId,
+      referencedTable: $db.places,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.places,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$VisitsTableAnnotationComposer
+    extends Composer<_$DaylineDatabase, $VisitsTable> {
+  $$VisitsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get arrivedAt =>
+      $composableBuilder(column: $table.arrivedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get departedAt => $composableBuilder(
+    column: $table.departedAt,
+    builder: (column) => column,
+  );
+
+  $$PlacesTableAnnotationComposer get placeId {
+    final $$PlacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.placeId,
+      referencedTable: $db.places,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.places,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> eventsRefs<T extends Object>(
+    Expression<T> Function($$EventsTableAnnotationComposer a) f,
+  ) {
+    final $$EventsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.events,
+      getReferencedColumn: (t) => t.fromVisitId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EventsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.events,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$VisitsTableTableManager
+    extends
+        RootTableManager<
+          _$DaylineDatabase,
+          $VisitsTable,
+          VisitRow,
+          $$VisitsTableFilterComposer,
+          $$VisitsTableOrderingComposer,
+          $$VisitsTableAnnotationComposer,
+          $$VisitsTableCreateCompanionBuilder,
+          $$VisitsTableUpdateCompanionBuilder,
+          (VisitRow, $$VisitsTableReferences),
+          VisitRow,
+          PrefetchHooks Function({bool placeId, bool eventsRefs})
+        > {
+  $$VisitsTableTableManager(_$DaylineDatabase db, $VisitsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VisitsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VisitsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VisitsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> placeId = const Value.absent(),
+                Value<DateTime> arrivedAt = const Value.absent(),
+                Value<DateTime?> departedAt = const Value.absent(),
+              }) => VisitsCompanion(
+                id: id,
+                placeId: placeId,
+                arrivedAt: arrivedAt,
+                departedAt: departedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int placeId,
+                required DateTime arrivedAt,
+                Value<DateTime?> departedAt = const Value.absent(),
+              }) => VisitsCompanion.insert(
+                id: id,
+                placeId: placeId,
+                arrivedAt: arrivedAt,
+                departedAt: departedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$VisitsTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback: ({placeId = false, eventsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (eventsRefs) db.events],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (placeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.placeId,
+                                referencedTable: $$VisitsTableReferences
+                                    ._placeIdTable(db),
+                                referencedColumn: $$VisitsTableReferences
+                                    ._placeIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (eventsRefs)
+                    await $_getPrefetchedData<VisitRow, $VisitsTable, EventRow>(
+                      currentTable: table,
+                      referencedTable: $$VisitsTableReferences._eventsRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$VisitsTableReferences(db, table, p0).eventsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.fromVisitId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$VisitsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$DaylineDatabase,
+      $VisitsTable,
+      VisitRow,
+      $$VisitsTableFilterComposer,
+      $$VisitsTableOrderingComposer,
+      $$VisitsTableAnnotationComposer,
+      $$VisitsTableCreateCompanionBuilder,
+      $$VisitsTableUpdateCompanionBuilder,
+      (VisitRow, $$VisitsTableReferences),
+      VisitRow,
+      PrefetchHooks Function({bool placeId, bool eventsRefs})
     >;
 typedef $$EventsTableCreateCompanionBuilder =
     EventsCompanion Function({
@@ -3209,6 +3744,7 @@ typedef $$EventsTableCreateCompanionBuilder =
       Value<bool> isActive,
       Value<int?> placeId,
       Value<bool> autoCompleteOnArrival,
+      Value<int?> fromVisitId,
     });
 typedef $$EventsTableUpdateCompanionBuilder =
     EventsCompanion Function({
@@ -3228,6 +3764,7 @@ typedef $$EventsTableUpdateCompanionBuilder =
       Value<bool> isActive,
       Value<int?> placeId,
       Value<bool> autoCompleteOnArrival,
+      Value<int?> fromVisitId,
     });
 
 final class $$EventsTableReferences
@@ -3245,6 +3782,23 @@ final class $$EventsTableReferences
       $_db.places,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_placeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $VisitsTable _fromVisitIdTable(_$DaylineDatabase db) => db.visits
+      .createAlias($_aliasNameGenerator(db.events.fromVisitId, db.visits.id));
+
+  $$VisitsTableProcessedTableManager? get fromVisitId {
+    final $_column = $_itemColumn<int>('from_visit_id');
+    if ($_column == null) return null;
+    final manager = $$VisitsTableTableManager(
+      $_db,
+      $_db.visits,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_fromVisitIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -3390,6 +3944,29 @@ class $$EventsTableFilterComposer
           }) => $$PlacesTableFilterComposer(
             $db: $db,
             $table: $db.places,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$VisitsTableFilterComposer get fromVisitId {
+    final $$VisitsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromVisitId,
+      referencedTable: $db.visits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VisitsTableFilterComposer(
+            $db: $db,
+            $table: $db.visits,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3556,6 +4133,29 @@ class $$EventsTableOrderingComposer
     );
     return composer;
   }
+
+  $$VisitsTableOrderingComposer get fromVisitId {
+    final $$VisitsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromVisitId,
+      referencedTable: $db.visits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VisitsTableOrderingComposer(
+            $db: $db,
+            $table: $db.visits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$EventsTableAnnotationComposer
@@ -3651,6 +4251,29 @@ class $$EventsTableAnnotationComposer
     return composer;
   }
 
+  $$VisitsTableAnnotationComposer get fromVisitId {
+    final $$VisitsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromVisitId,
+      referencedTable: $db.visits,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VisitsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.visits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
   Expression<T> completionsRefs<T extends Object>(
     Expression<T> Function($$CompletionsTableAnnotationComposer a) f,
   ) {
@@ -3717,6 +4340,7 @@ class $$EventsTableTableManager
           EventRow,
           PrefetchHooks Function({
             bool placeId,
+            bool fromVisitId,
             bool completionsRefs,
             bool overridesRefs,
           })
@@ -3750,6 +4374,7 @@ class $$EventsTableTableManager
                 Value<bool> isActive = const Value.absent(),
                 Value<int?> placeId = const Value.absent(),
                 Value<bool> autoCompleteOnArrival = const Value.absent(),
+                Value<int?> fromVisitId = const Value.absent(),
               }) => EventsCompanion(
                 id: id,
                 title: title,
@@ -3767,6 +4392,7 @@ class $$EventsTableTableManager
                 isActive: isActive,
                 placeId: placeId,
                 autoCompleteOnArrival: autoCompleteOnArrival,
+                fromVisitId: fromVisitId,
               ),
           createCompanionCallback:
               ({
@@ -3786,6 +4412,7 @@ class $$EventsTableTableManager
                 Value<bool> isActive = const Value.absent(),
                 Value<int?> placeId = const Value.absent(),
                 Value<bool> autoCompleteOnArrival = const Value.absent(),
+                Value<int?> fromVisitId = const Value.absent(),
               }) => EventsCompanion.insert(
                 id: id,
                 title: title,
@@ -3803,6 +4430,7 @@ class $$EventsTableTableManager
                 isActive: isActive,
                 placeId: placeId,
                 autoCompleteOnArrival: autoCompleteOnArrival,
+                fromVisitId: fromVisitId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3813,6 +4441,7 @@ class $$EventsTableTableManager
           prefetchHooksCallback:
               ({
                 placeId = false,
+                fromVisitId = false,
                 completionsRefs = false,
                 overridesRefs = false,
               }) {
@@ -3847,6 +4476,19 @@ class $$EventsTableTableManager
                                         ._placeIdTable(db),
                                     referencedColumn: $$EventsTableReferences
                                         ._placeIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (fromVisitId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.fromVisitId,
+                                    referencedTable: $$EventsTableReferences
+                                        ._fromVisitIdTable(db),
+                                    referencedColumn: $$EventsTableReferences
+                                        ._fromVisitIdTable(db)
                                         .id,
                                   )
                                   as T;
@@ -3920,6 +4562,7 @@ typedef $$EventsTableProcessedTableManager =
       EventRow,
       PrefetchHooks Function({
         bool placeId,
+        bool fromVisitId,
         bool completionsRefs,
         bool overridesRefs,
       })
@@ -4689,304 +5332,14 @@ typedef $$SettingsTableProcessedTableManager =
       SettingRow,
       PrefetchHooks Function()
     >;
-typedef $$VisitsTableCreateCompanionBuilder =
-    VisitsCompanion Function({
-      Value<int> id,
-      required int placeId,
-      required DateTime arrivedAt,
-      Value<DateTime?> departedAt,
-    });
-typedef $$VisitsTableUpdateCompanionBuilder =
-    VisitsCompanion Function({
-      Value<int> id,
-      Value<int> placeId,
-      Value<DateTime> arrivedAt,
-      Value<DateTime?> departedAt,
-    });
-
-final class $$VisitsTableReferences
-    extends BaseReferences<_$DaylineDatabase, $VisitsTable, VisitRow> {
-  $$VisitsTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $PlacesTable _placeIdTable(_$DaylineDatabase db) => db.places
-      .createAlias($_aliasNameGenerator(db.visits.placeId, db.places.id));
-
-  $$PlacesTableProcessedTableManager get placeId {
-    final $_column = $_itemColumn<int>('place_id')!;
-
-    final manager = $$PlacesTableTableManager(
-      $_db,
-      $_db.places,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_placeIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
-class $$VisitsTableFilterComposer
-    extends Composer<_$DaylineDatabase, $VisitsTable> {
-  $$VisitsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get arrivedAt => $composableBuilder(
-    column: $table.arrivedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get departedAt => $composableBuilder(
-    column: $table.departedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$PlacesTableFilterComposer get placeId {
-    final $$PlacesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.placeId,
-      referencedTable: $db.places,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PlacesTableFilterComposer(
-            $db: $db,
-            $table: $db.places,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$VisitsTableOrderingComposer
-    extends Composer<_$DaylineDatabase, $VisitsTable> {
-  $$VisitsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get arrivedAt => $composableBuilder(
-    column: $table.arrivedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get departedAt => $composableBuilder(
-    column: $table.departedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$PlacesTableOrderingComposer get placeId {
-    final $$PlacesTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.placeId,
-      referencedTable: $db.places,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PlacesTableOrderingComposer(
-            $db: $db,
-            $table: $db.places,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$VisitsTableAnnotationComposer
-    extends Composer<_$DaylineDatabase, $VisitsTable> {
-  $$VisitsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get arrivedAt =>
-      $composableBuilder(column: $table.arrivedAt, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get departedAt => $composableBuilder(
-    column: $table.departedAt,
-    builder: (column) => column,
-  );
-
-  $$PlacesTableAnnotationComposer get placeId {
-    final $$PlacesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.placeId,
-      referencedTable: $db.places,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$PlacesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.places,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$VisitsTableTableManager
-    extends
-        RootTableManager<
-          _$DaylineDatabase,
-          $VisitsTable,
-          VisitRow,
-          $$VisitsTableFilterComposer,
-          $$VisitsTableOrderingComposer,
-          $$VisitsTableAnnotationComposer,
-          $$VisitsTableCreateCompanionBuilder,
-          $$VisitsTableUpdateCompanionBuilder,
-          (VisitRow, $$VisitsTableReferences),
-          VisitRow,
-          PrefetchHooks Function({bool placeId})
-        > {
-  $$VisitsTableTableManager(_$DaylineDatabase db, $VisitsTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$VisitsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$VisitsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$VisitsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<int> placeId = const Value.absent(),
-                Value<DateTime> arrivedAt = const Value.absent(),
-                Value<DateTime?> departedAt = const Value.absent(),
-              }) => VisitsCompanion(
-                id: id,
-                placeId: placeId,
-                arrivedAt: arrivedAt,
-                departedAt: departedAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required int placeId,
-                required DateTime arrivedAt,
-                Value<DateTime?> departedAt = const Value.absent(),
-              }) => VisitsCompanion.insert(
-                id: id,
-                placeId: placeId,
-                arrivedAt: arrivedAt,
-                departedAt: departedAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) =>
-                    (e.readTable(table), $$VisitsTableReferences(db, table, e)),
-              )
-              .toList(),
-          prefetchHooksCallback: ({placeId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (placeId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.placeId,
-                                referencedTable: $$VisitsTableReferences
-                                    ._placeIdTable(db),
-                                referencedColumn: $$VisitsTableReferences
-                                    ._placeIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$VisitsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$DaylineDatabase,
-      $VisitsTable,
-      VisitRow,
-      $$VisitsTableFilterComposer,
-      $$VisitsTableOrderingComposer,
-      $$VisitsTableAnnotationComposer,
-      $$VisitsTableCreateCompanionBuilder,
-      $$VisitsTableUpdateCompanionBuilder,
-      (VisitRow, $$VisitsTableReferences),
-      VisitRow,
-      PrefetchHooks Function({bool placeId})
-    >;
 
 class $DaylineDatabaseManager {
   final _$DaylineDatabase _db;
   $DaylineDatabaseManager(this._db);
   $$PlacesTableTableManager get places =>
       $$PlacesTableTableManager(_db, _db.places);
+  $$VisitsTableTableManager get visits =>
+      $$VisitsTableTableManager(_db, _db.visits);
   $$EventsTableTableManager get events =>
       $$EventsTableTableManager(_db, _db.events);
   $$CompletionsTableTableManager get completions =>
@@ -4995,6 +5348,4 @@ class $DaylineDatabaseManager {
       $$OverridesTableTableManager(_db, _db.overrides);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
-  $$VisitsTableTableManager get visits =>
-      $$VisitsTableTableManager(_db, _db.visits);
 }

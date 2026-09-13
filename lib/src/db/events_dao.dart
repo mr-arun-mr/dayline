@@ -6,6 +6,8 @@ import '../model/auto_complete.dart';
 import '../model/calendar_date.dart';
 import '../model/event.dart';
 import '../model/occurrence.dart';
+import '../model/place.dart';
+import '../model/place_stats.dart';
 import '../model/recurrence.dart';
 import 'database.dart';
 import 'live_query.dart';
@@ -13,13 +15,20 @@ import 'tables.dart';
 
 part 'events_dao.g.dart';
 
-@DriftAccessor(tables: [Events, Completions, Overrides])
+@DriftAccessor(tables: [Events, Completions, Overrides, Visits])
 class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin {
   EventsDao(super.db);
 
-  /// Every rule, newest first. Backs the All Events screen.
+  /// Every rule the user made, newest first. Backs the All Events screen.
+  ///
+  /// Rows the app wrote to record a visit are deliberately not here. All
+  /// Events is a list of rules — things with a schedule and a streak — and a
+  /// place you went last Tuesday is neither. They would also flood the
+  /// dashboard's adherence, which reads this and would find a hundred
+  /// one-offs that were, by construction, all attended.
   Future<List<Event>> allEvents() async {
     final rows = await (select(events)
+          ..where((e) => e.fromVisitId.isNull())
           ..orderBy([
             (e) => OrderingTerm(expression: e.timeOfDay),
             (e) => OrderingTerm(expression: e.title),
@@ -110,7 +119,43 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
       if (byTitle != 0) return byTitle;
       return a.eventId.compareTo(b.eventId);
     });
-    return result;
+
+    // Planned, meet actual: anything tied to a place picks up the stay that
+    // lines up with it, so the row can say both when it was meant to happen
+    // and when the user was really there.
+    return withVisits(result, await _visitsAround(date));
+  }
+
+  /// The stays that could line up with something on [date].
+  ///
+  /// Widened by the grace either side, because an 07:00 event can be matched
+  /// by a stay that began at 05:30 the same morning or — for something just
+  /// before midnight — one that runs into the next day. Open visits are
+  /// included however long ago they began: the device has been at home since
+  /// yesterday, and that is still where it is now.
+  Future<List<Visit>> _visitsAround(
+    CalendarDate date, {
+    Duration grace = arrivalGrace,
+  }) async {
+    final from = date.localDateTimeAt(0).subtract(grace);
+    final to = date.addDays(1).localDateTimeAt(0).add(grace);
+
+    final rows = await (select(visits)
+          ..where((v) =>
+              v.arrivedAt.isSmallerThanValue(to) &
+              (v.departedAt.isNull() | v.departedAt.isBiggerThanValue(from)))
+          ..orderBy([(v) => OrderingTerm(expression: v.arrivedAt)]))
+        .get();
+
+    return [
+      for (final row in rows)
+        Visit(
+          id: row.id,
+          placeId: row.placeId,
+          arrivedAt: row.arrivedAt,
+          departedAt: row.departedAt,
+        ),
+    ];
   }
 
   /// [occurrencesForDate], re-run whenever anything it reads changes.
@@ -119,7 +164,13 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
   Stream<List<Occurrence>> watchOccurrencesForDate(CalendarDate date) =>
       liveQuery(
         updates: attachedDatabase.tableUpdates(
-          TableUpdateQuery.onAllTables([events, completions, overrides]),
+          TableUpdateQuery.onAllTables([
+            events,
+            completions,
+            overrides,
+            // Arriving somewhere changes the day without changing a rule.
+            visits,
+          ]),
         ),
         read: () => occurrencesForDate(date),
       );
@@ -303,6 +354,100 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
     return completed;
   }
 
+  /// Writes a stay onto the day it happened, as an event of its own.
+  ///
+  /// The other half of arriving somewhere. [completeOnArrival] ticks off what
+  /// was planned; this covers what was not — the hour at the office on a
+  /// Saturday, the trip to the shop — so the day reads as what actually
+  /// happened rather than only as what was intended.
+  ///
+  /// It writes nothing unless the place asked for it, and nothing at all if
+  /// the day already accounts for being there: an event tied to this place
+  /// within [grace] of the arrival is that account, whether the user marked it
+  /// or the app did. Two rows saying "Gym" an hour apart is exactly the noise
+  /// this is supposed to remove.
+  ///
+  /// Keyed on the visit, so however many times the OS re-delivers a crossing —
+  /// and it will, on every app start, for a place the device is already
+  /// sitting in — one stay produces one row.
+  ///
+  /// Returns the occurrence it wrote, or null if it wrote nothing.
+  Future<Occurrence?> recordVisitAsEvent({
+    required Place place,
+    required int visitId,
+    required DateTime at,
+    Duration grace = arrivalGrace,
+  }) async {
+    if (!place.addVisitsToDay) return null;
+
+    final existing = await (select(events)
+          ..where((e) => e.fromVisitId.equals(visitId))
+          ..limit(1))
+        .getSingleOrNull();
+    if (existing != null) return null;
+
+    final date = CalendarDate.fromDateTime(at);
+    final timeOfDay = at.hour * 60 + at.minute;
+
+    final onTheDay = await occurrencesForDate(date);
+    final alreadyAccountedFor = onTheDay.any((occurrence) =>
+        occurrence.event.placeId == place.id &&
+        arrivalCountsFor(
+          date: date,
+          timeOfDay: occurrence.effectiveTimeOfDay,
+          arrivedAt: at,
+          grace: grace,
+        ));
+    if (alreadyAccountedFor) return null;
+
+    final id = await insertEvent(EventsCompanion.insert(
+      title: place.name,
+      colorValue: place.colorValue,
+      timeOfDay: timeOfDay,
+      // A visit happened once, on one day. It is not a rule, and expanding it
+      // beyond its own date would be inventing a routine nobody described.
+      recurrence: Recurrence.once,
+      startDate: date,
+      placeId: Value(place.id),
+      fromVisitId: Value(visitId),
+      // Nothing to remind anyone of: it has already happened.
+      leadMinutes: const Value([]),
+    ));
+
+    // Done, because it is: the row records something the user did, and leaving
+    // it pending would file it under Overdue and ask them to confirm they went
+    // where the phone watched them go.
+    await setCompletion(
+      eventId: id,
+      date: date,
+      status: CompletionStatus.done,
+      at: at,
+      automatic: true,
+    );
+
+    final written = await occurrencesForDate(date);
+    for (final occurrence in written) {
+      if (occurrence.eventId == id) return occurrence;
+    }
+    return null;
+  }
+
+  /// Fills in how long a recorded stay lasted, once it is over.
+  ///
+  /// Only touches a row still linked to the visit. Once the user has opened
+  /// one in the editor it is theirs — the link is gone — and a departure must
+  /// not reach back in and overwrite what they made of it.
+  Future<void> closeVisitEvent(Visit visit) async {
+    final departed = visit.departedAt;
+    if (departed == null) return;
+
+    final minutes = departed.difference(visit.arrivedAt).inMinutes;
+    if (minutes <= 0) return;
+
+    await (update(events)..where((e) => e.fromVisitId.equals(visit.id)))
+        .write(EventsCompanion(durationMin: Value(minutes)));
+  }
+
   /// Undoes a done/skipped mark, returning the occurrence to pending.
   Future<int> clearCompletion(int eventId, CalendarDate date) =>
       (delete(completions)
@@ -348,6 +493,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         leadMinutes: row.leadMinutes,
         placeId: row.placeId,
         autoCompleteOnArrival: row.autoCompleteOnArrival,
+        fromVisitId: row.fromVisitId,
         rule: EventRule(
           recurrence: row.recurrence,
           timeOfDay: row.timeOfDay,

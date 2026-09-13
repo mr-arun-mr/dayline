@@ -72,34 +72,43 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
     return rows.map(_toVisit).toList();
   }
 
-  /// Records that the device entered a place.
+  /// Records that the device entered a place, and returns the stay's id.
   ///
   /// Idempotent by design: the OS can deliver the same enter twice, and both
   /// platforms occasionally send an enter without ever having sent the matching
   /// exit. A second arrival while one is already open is treated as the same
-  /// stay rather than starting a duplicate.
-  Future<void> recordArrival(int placeId, DateTime at) async {
+  /// stay rather than starting a duplicate — and returns that same id, which
+  /// is what keeps one stay from producing two of anything downstream.
+  Future<int> recordArrival(int placeId, DateTime at) async {
     final open = await _openVisitFor(placeId);
-    if (open != null) return;
-    await into(visits).insert(
+    if (open != null) return open.id;
+    return into(visits).insert(
       VisitsCompanion.insert(placeId: placeId, arrivedAt: at),
     );
   }
 
-  /// Records that the device left.
+  /// Records that the device left, and returns the stay it closed.
   ///
   /// An exit with no matching arrival is dropped rather than invented: a visit
   /// of unknown length is worse than no visit, because it would be counted.
-  Future<void> recordDeparture(int placeId, DateTime at) async {
+  /// Null back means nothing was closed — no arrival to close, or a departure
+  /// that turned out not to be one.
+  Future<Visit?> recordDeparture(int placeId, DateTime at) async {
     final open = await _openVisitFor(placeId);
-    if (open == null) return;
+    if (open == null) return null;
     // A departure before the arrival is a clock adjustment, not a stay.
     if (!at.isAfter(open.arrivedAt)) {
       await (delete(visits)..where((v) => v.id.equals(open.id))).go();
-      return;
+      return null;
     }
     await (update(visits)..where((v) => v.id.equals(open.id)))
         .write(VisitsCompanion(departedAt: Value(at)));
+    return Visit(
+      id: open.id,
+      placeId: open.placeId,
+      arrivedAt: open.arrivedAt,
+      departedAt: at,
+    );
   }
 
   Future<Visit?> _openVisitFor(int placeId) async {
@@ -128,6 +137,7 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
     colorValue: row.colorValue,
     kind: row.kind,
     isActive: row.isActive,
+    addVisitsToDay: row.addVisitsToDay,
   );
 
   Visit _toVisit(VisitRow row) => Visit(

@@ -34,6 +34,7 @@ class Place {
     required this.colorValue,
     this.kind = PlaceKind.other,
     this.isActive = true,
+    this.addVisitsToDay = false,
   });
 
   final int id;
@@ -50,6 +51,11 @@ class Place {
 
   /// Whether the OS is currently watching for it.
   final bool isActive;
+
+  /// Whether a stay here should be written onto the day as an event of its
+  /// own, so the timeline shows where the time actually went and not only what
+  /// was planned.
+  final bool addVisitsToDay;
 
   /// The smallest radius the OS will reliably honour. Below roughly this,
   /// both platforms produce arrivals and departures that never happened.

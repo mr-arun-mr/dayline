@@ -153,19 +153,20 @@ Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
   }
 }
 
-/// The part worth testing: turning a crossing into a visit row, and into a
-/// tick for whatever the user said arriving there completes.
+/// The part worth testing: turning a crossing into a visit row, into a tick
+/// for whatever the user said arriving there completes, and — where the place
+/// asked for it — into a row on the day of its own.
 ///
-/// Returns the occurrences auto-completed by this crossing, which is nothing
-/// at all for the ordinary case of arriving somewhere with no routine tied to
-/// it.
+/// Returns the occurrences this crossing marked done or wrote, which is
+/// nothing at all for the ordinary case of arriving somewhere with no routine
+/// tied to it.
 Future<List<Occurrence>> applyGeofenceEvent({
   required DaylineDatabase db,
   required List<int> placeIds,
   required GeofenceEvent event,
   required DateTime at,
 }) async {
-  final completed = <Occurrence>[];
+  final touched = <Occurrence>[];
 
   for (final placeId in placeIds) {
     switch (event) {
@@ -174,16 +175,32 @@ Future<List<Occurrence>> applyGeofenceEvent({
       // device is definitely there. Treated as an arrival; recordArrival is
       // idempotent, so an enter followed by a dwell is still one visit.
       case GeofenceEvent.dwell:
-        await db.placesDao.recordArrival(placeId, at);
+        final visitId = await db.placesDao.recordArrival(placeId, at);
         // Deliberately after the visit is recorded. If the tick were written
         // first and the isolate died, there would be a completion with no
         // arrival behind it — a tick the dashboard could not account for.
-        completed.addAll(
+        touched.addAll(
           await db.eventsDao.completeOnArrival(placeId: placeId, at: at),
         );
+
+        // And only then a row of its own, so that a stay which just ticked off
+        // a planned event is never also filed as an unplanned one.
+        final place = await db.placesDao.placeById(placeId);
+        if (place != null) {
+          final recorded = await db.eventsDao.recordVisitAsEvent(
+            place: place,
+            visitId: visitId,
+            at: at,
+          );
+          if (recorded != null) touched.add(recorded);
+        }
+
       case GeofenceEvent.exit:
-        await db.placesDao.recordDeparture(placeId, at);
+        final closed = await db.placesDao.recordDeparture(placeId, at);
+        // Now that the stay has an end, the row it wrote can say how long it
+        // lasted.
+        if (closed != null) await db.eventsDao.closeVisitEvent(closed);
     }
   }
-  return completed;
+  return touched;
 }

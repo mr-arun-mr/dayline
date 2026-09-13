@@ -1,5 +1,6 @@
 import 'calendar_date.dart';
 import 'event.dart';
+import 'place.dart';
 
 /// One expanded instance of an event on one date — what a row on the Today
 /// screen is. Never persisted.
@@ -12,6 +13,7 @@ class Occurrence {
     this.completedAt,
     this.isMoved = false,
     this.isAutomatic = false,
+    this.visit,
   });
 
   final Event event;
@@ -36,6 +38,27 @@ class Occurrence {
   /// explanation attached.
   final bool isAutomatic;
 
+  /// The stay at this event's place that lines up with it, when there is one.
+  ///
+  /// What turns a planned time into a planned *and actual* one: the row can
+  /// say the gym was at 07:00 and that you were in it from 07:04 to 08:12.
+  /// Null for an event tied to nowhere, for a day the phone was not watching,
+  /// and for one where you simply did not go.
+  final Visit? visit;
+
+  /// When the user actually got there, if it was noticed.
+  DateTime? get arrivedAt => visit?.arrivedAt;
+
+  /// When they left. Null while they are still there, or were never seen.
+  DateTime? get departedAt => visit?.departedAt;
+
+  /// True while the device is still inside the place's fence.
+  bool get isStillThere => visit != null && visit!.isOpen;
+
+  /// Whether this row is a record of somewhere the user went rather than
+  /// something they planned.
+  bool get isVisitRecord => event.isVisitRecord;
+
   int get eventId => event.id;
 
   bool get isDone => status == CompletionStatus.done;
@@ -55,6 +78,7 @@ class Occurrence {
     CompletionStatus? status,
     DateTime? completedAt,
     bool? isAutomatic,
+    Visit? visit,
   }) => Occurrence(
     event: event,
     date: date,
@@ -63,5 +87,6 @@ class Occurrence {
     status: status ?? this.status,
     completedAt: completedAt ?? this.completedAt,
     isAutomatic: isAutomatic ?? this.isAutomatic,
+    visit: visit ?? this.visit,
   );
 }

@@ -1,5 +1,6 @@
 import 'auto_complete.dart';
 import 'calendar_date.dart';
+import 'occurrence.dart';
 import 'place.dart';
 
 /// Total time spent at each place inside a window.
@@ -115,6 +116,73 @@ Adherence adherenceFor({
 
   return Adherence(expected: expected, attended: attended);
 }
+
+/// The stay that lines up with one occurrence, if there is one.
+///
+/// The row on the Today screen says a thing was planned for 07:00; this is
+/// what lets it also say you were there from 07:04 to 08:12. Judged by the
+/// same [arrivalGrace] the dashboard and auto-completion use, so the three
+/// never disagree about whether you turned up.
+///
+/// An occurrence written *from* a visit is matched to that visit outright:
+/// the row exists because of it, so there is nothing to infer.
+///
+/// Where more than one stay overlaps the window — out for coffee and back —
+/// the one that began nearest the scheduled time wins, because that is the one
+/// a person would point at.
+Visit? visitForOccurrence(
+  Occurrence occurrence,
+  Iterable<Visit> visits, {
+  Duration grace = arrivalGrace,
+}) {
+  final placeId = occurrence.event.placeId;
+  if (placeId == null) return null;
+
+  if (occurrence.event.fromVisitId case final visitId?) {
+    for (final visit in visits) {
+      if (visit.id == visitId) return visit;
+    }
+    return null;
+  }
+
+  final scheduled =
+      occurrence.date.localDateTimeAt(occurrence.effectiveTimeOfDay);
+  final from = scheduled.subtract(grace);
+  final to = scheduled.add(grace);
+
+  Visit? best;
+  Duration? bestGap;
+  for (final visit in visits) {
+    if (visit.placeId != placeId) continue;
+    // An open visit is still running, so it overlaps anything after it began.
+    final end = visit.departedAt;
+    final overlaps = visit.arrivedAt.isBefore(to) &&
+        (end == null || end.isAfter(from));
+    if (!overlaps) continue;
+
+    final gap = visit.arrivedAt.difference(scheduled).abs();
+    if (bestGap == null || gap < bestGap) {
+      best = visit;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/// [visitForOccurrence] over a whole day, leaving occurrences without a place
+/// exactly as they were.
+List<Occurrence> withVisits(
+  List<Occurrence> occurrences,
+  Iterable<Visit> visits, {
+  Duration grace = arrivalGrace,
+}) =>
+    [
+      for (final occurrence in occurrences)
+        switch (visitForOccurrence(occurrence, visits, grace: grace)) {
+          final visit? => occurrence.copyWith(visit: visit),
+          null => occurrence,
+        },
+    ];
 
 /// A week's total at one place, for the trend strip.
 class WeeklyTotal {
