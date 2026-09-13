@@ -217,9 +217,12 @@ free Apple ID is enough for your own phone.
 2. Select the **Runner** target → **Signing & Capabilities**.
 3. Tick **Automatically manage signing** and choose your Team. A free personal
    team works.
-4. **Change the Bundle Identifier.** It currently reads `dev.dayline.dayline`,
-   which is not yours and will be rejected. Use something like
-   `com.yourname.dayline`.
+4. **Check the Bundle Identifier.** The project is committed signed for one
+   personal team (`7S42Z6KVAG`) as `com.arunmr.dayline`. If that is not your
+   team, choose yours and change the identifier to something like
+   `com.yourname.dayline` — a free team cannot sign an identifier another team
+   has already registered. (Android keeps `dev.dayline.dayline`; the two
+   platforms do not need to match.)
 5. Plug the phone in and trust the computer, then:
 
    ```bash
