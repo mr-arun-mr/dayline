@@ -1,6 +1,7 @@
 import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/db/settings_dao.dart';
 import 'package:dayline/src/model/calendar_date.dart';
+import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
 import 'package:dayline/src/ui/edit/edit_event_screen.dart';
@@ -215,6 +216,151 @@ void main() {
     expect(event.rule.dayOfMonth, isNull);
 
     await close(tester);
+  });
+
+  group('marking done on arrival', () {
+    // The switch hangs off the place picker, which only appears once the user
+    // has somewhere to put an event.
+    Future<int> addGym() => db.placesDao.insertPlace(PlacesCompanion.insert(
+          name: 'Gym',
+          latitude: 51.5,
+          longitude: -0.12,
+          colorValue: 0xFF3B82F6,
+          kind: PlaceKind.gym,
+        ));
+
+    final switchKey = find.byKey(const ValueKey('auto-complete-switch'));
+
+    testWidgets('is not offered with no places at all', (tester) async {
+      await pumpEditor(tester);
+
+      expect(find.text('Where'), findsNothing);
+      expect(switchKey, findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('is not offered until a place is picked', (tester) async {
+      await addGym();
+      await pumpEditor(tester);
+
+      // "Anywhere" is the default, and arriving anywhere is not an arrival.
+      expect(find.text('Where'), findsOneWidget);
+      expect(switchKey, findsNothing);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Gym'));
+      await settle(tester);
+
+      expect(switchKey, findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('is off by default, and saves on when switched on',
+        (tester) async {
+      await addGym();
+      await pumpEditor(tester);
+      await type(tester, 'Gym');
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Gym'));
+      await settle(tester);
+      await tester.tap(switchKey);
+      await settle(tester);
+
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.autoCompleteOnArrival, isTrue);
+      expect(event.completesOnArrival, isTrue);
+
+      await close(tester);
+    });
+
+    testWidgets('stays off when left alone', (tester) async {
+      await addGym();
+      await pumpEditor(tester);
+      await type(tester, 'Gym');
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Gym'));
+      await settle(tester);
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      expect((await db.eventsDao.allEvents()).single.autoCompleteOnArrival,
+          isFalse);
+
+      await close(tester);
+    });
+
+    testWidgets('clearing the place takes the switch with it', (tester) async {
+      // A promise the app cannot keep is worse than one it never made.
+      await addGym();
+      await pumpEditor(tester);
+      await type(tester, 'Gym');
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Gym'));
+      await settle(tester);
+      await tester.tap(switchKey);
+      await settle(tester);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Anywhere'));
+      await settle(tester);
+      expect(switchKey, findsNothing);
+
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.placeId, isNull);
+      expect(event.autoCompleteOnArrival, isFalse);
+
+      await close(tester);
+    });
+
+    testWidgets('loads back on for a rule that has it', (tester) async {
+      final place = await addGym();
+      final id = await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 0xFF3B82F6,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today,
+        placeId: Value(place),
+        autoCompleteOnArrival: const Value(true),
+      ));
+
+      await pumpEditor(tester, eventId: id);
+
+      expect(tester.widget<SwitchListTile>(switchKey).value, isTrue);
+
+      await close(tester);
+    });
+
+    testWidgets('turning it back off saves off', (tester) async {
+      final place = await addGym();
+      final id = await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 0xFF3B82F6,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today,
+        placeId: Value(place),
+        autoCompleteOnArrival: const Value(true),
+      ));
+
+      await pumpEditor(tester, eventId: id);
+      await tester.tap(switchKey);
+      await settle(tester);
+      await tester.tap(find.text('Save'));
+      await settle(tester);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.autoCompleteOnArrival, isFalse);
+      expect(event.placeId, place, reason: 'the place link is untouched');
+
+      await close(tester);
+    });
   });
 
   testWidgets('an existing rule loads back into the right controls',

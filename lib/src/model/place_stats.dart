@@ -1,3 +1,4 @@
+import 'auto_complete.dart';
 import 'calendar_date.dart';
 import 'place.dart';
 
@@ -82,17 +83,16 @@ class Adherence {
 /// that ties location back to what this app is for, and it is the only place
 /// visit data is read for anything other than showing it back to the user.
 ///
-/// [window] is the grace either side of the scheduled time. It is generous on
-/// purpose: arriving twenty minutes late is still going to the gym, and a
-/// geofence of a hundred metres does not report arrival at the instant you walk
-/// through the door.
+/// [window] is the grace either side of the scheduled time — the same
+/// [arrivalGrace] an auto-completing rule ticks itself off within, so what the
+/// dashboard counts as having gone and what the app acts on are one number.
 Adherence adherenceFor({
   required Iterable<CalendarDate> occurrenceDates,
   required int timeOfDay,
   required Iterable<Visit> visits,
   required int placeId,
   required DateTime now,
-  Duration window = const Duration(hours: 2),
+  Duration window = arrivalGrace,
 }) {
   final relevant = visits.where((v) => v.placeId == placeId).toList();
   var expected = 0;

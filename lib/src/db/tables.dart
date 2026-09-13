@@ -53,6 +53,15 @@ class Events extends Table {
   IntColumn get placeId => integer()
       .nullable()
       .customConstraint('REFERENCES places(id) ON DELETE SET NULL')();
+
+  /// Tick this one off by itself when the device arrives at [placeId] around
+  /// the time it is due.
+  ///
+  /// Meaningless without a place, and the editor only offers it once one is
+  /// picked — but stored independently so that clearing the place cannot leave
+  /// a rule quietly waiting for an arrival that can never come.
+  BoolColumn get autoCompleteOnArrival =>
+      boolean().withDefault(const Constant(false))();
 }
 
 /// Written only when the user acts on an occurrence. An untouched day costs no
@@ -72,6 +81,11 @@ class Completions extends Table {
   IntColumn get status => integer().map(const CompletionStatusConverter())();
 
   DateTimeColumn get completedAt => dateTime()();
+
+  /// True when the app ticked this off on arrival rather than the user. Kept
+  /// so the row can say why it is ticked: a tick the user did not make and
+  /// cannot account for is worse than no tick.
+  BoolColumn get isAutomatic => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {eventId, date};

@@ -53,6 +53,10 @@ Future<void> _startUp(
     debugPrint('Dayline: could not initialise notifications — $error');
   }
 
+  // From here on, anything the geofence isolate writes while the app is in the
+  // background shows up when the user comes back to it.
+  container.read(foregroundRefreshProvider).start();
+
   // Geofences do not survive a reboot either, so they are re-registered on
   // every cold start for the same reason the reminders are.
   unawaited(

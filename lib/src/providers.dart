@@ -10,6 +10,7 @@ import 'model/streak.dart';
 
 import 'db/database.dart';
 import 'db/events_dao.dart';
+import 'db/foreground_refresh.dart';
 import 'db/places_dao.dart';
 import 'db/settings_dao.dart';
 import 'model/calendar_date.dart';
@@ -96,6 +97,15 @@ final streakProvider = StreamProvider.family<Streak, int>((ref, eventId) {
 
 final placesDaoProvider =
     Provider<PlacesDao>((ref) => ref.watch(databaseProvider).placesDao);
+
+/// Picks up what the geofence isolate wrote while the app was in the
+/// background, so an arrival that ticked something off is on screen when the
+/// user looks.
+final foregroundRefreshProvider = Provider<ForegroundRefresh>((ref) {
+  final refresh = ForegroundRefresh(ref.watch(databaseProvider));
+  ref.onDispose(refresh.dispose);
+  return refresh;
+});
 
 final geofenceServiceProvider = Provider<GeofenceService>(
   (ref) => GeofenceService(ref.watch(databaseProvider)),

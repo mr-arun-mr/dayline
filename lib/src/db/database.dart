@@ -27,7 +27,7 @@ class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -39,6 +39,12 @@ class DaylineDatabase extends _$DaylineDatabase {
         await m.createTable(places);
         await m.createTable(visits);
         await m.addColumn(events, events.placeId);
+      }
+      // v4 added auto-completion on arrival, and the flag that says a
+      // completion was made by the app rather than by the user.
+      if (from < 4) {
+        await m.addColumn(events, events.autoCompleteOnArrival);
+        await m.addColumn(completions, completions.isAutomatic);
       }
     },
     beforeOpen: (details) async {

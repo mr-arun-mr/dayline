@@ -64,6 +64,7 @@ class BackupService {
             leadMinutes: e.leadMinutes,
             isActive: e.isActive,
             placeId: e.placeId,
+            autoCompleteOnArrival: e.autoCompleteOnArrival,
           ),
       ],
       places: [
@@ -94,6 +95,7 @@ class BackupService {
             date: c.date,
             status: c.status,
             completedAt: c.completedAt,
+            isAutomatic: c.isAutomatic,
           ),
       ],
       overrides: [
@@ -192,6 +194,7 @@ class BackupService {
             placeId: Value(
               event.placeId == null ? null : placeIdMap[event.placeId],
             ),
+            autoCompleteOnArrival: Value(event.autoCompleteOnArrival),
           ),
         );
         idMap[event.id] = newId;
@@ -208,6 +211,7 @@ class BackupService {
             date: completion.date,
             status: completion.status,
             completedAt: completion.completedAt,
+            isAutomatic: Value(completion.isAutomatic),
           ),
         );
         completions++;

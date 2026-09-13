@@ -115,6 +115,9 @@ class OccurrenceTile extends StatelessWidget {
   static String? _subtitle(Occurrence occurrence) {
     final parts = <String>[
       if (occurrence.isSkipped) 'Skipped',
+      // A tick the user does not remember making needs a reason attached, so
+      // this comes first: it is the answer to "why is that already done?".
+      if (occurrence.isDone && occurrence.isAutomatic) 'Done on arrival',
       if (occurrence.isMoved)
         'Moved from ${formatWallClock(occurrence.scheduledTimeOfDay)}',
       if (occurrence.event.durationMin case final minutes?)
@@ -176,7 +179,13 @@ class _StatusMark extends StatelessWidget {
           size: 26, color: scheme.onSurfaceVariant);
     }
     if (occurrence.isDone) {
-      return Icon(Icons.check_circle, size: 26, color: _doneGreen);
+      return Icon(
+        // A different tick for a tick nobody made: still unmistakably done,
+        // but visibly not the one the user pressed.
+        occurrence.isAutomatic ? Icons.where_to_vote : Icons.check_circle,
+        size: 26,
+        color: _doneGreen,
+      );
     }
     return Icon(Icons.circle_outlined, size: 26, color: scheme.outline);
   }

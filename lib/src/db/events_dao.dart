@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drift/drift.dart';
 
+import '../model/auto_complete.dart';
 import '../model/calendar_date.dart';
 import '../model/event.dart';
 import '../model/occurrence.dart';
@@ -97,6 +98,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         isMoved: moved,
         status: completion?.status,
         completedAt: completion?.completedAt,
+        isAutomatic: completion?.isAutomatic ?? false,
       ));
     }
 
@@ -221,17 +223,85 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
           .write(EventsCompanion(isActive: Value(active)));
 
   /// Marks one occurrence done or skipped. Re-marking overwrites.
+  ///
+  /// [automatic] records that the app decided this rather than the user, which
+  /// is the difference between a tick and a tick with an explanation.
   Future<void> setCompletion({
     required int eventId,
     required CalendarDate date,
     required CompletionStatus status,
     DateTime? at,
+    bool automatic = false,
   }) => into(completions).insertOnConflictUpdate(CompletionsCompanion.insert(
         eventId: eventId,
         date: date,
         status: status,
         completedAt: at ?? DateTime.now(),
+        isAutomatic: Value(automatic),
       ));
+
+  /// Ticks off whatever arriving at [placeId] at [at] counts as turning up for.
+  ///
+  /// Called from the geofence callback, which may be running in a background
+  /// isolate with the app closed — so this is deliberately a plain database
+  /// operation with nothing of the running app in it.
+  ///
+  /// Three rules, and they are the whole feature:
+  ///
+  /// * only rules tied to [placeId] that asked for this,
+  /// * only occurrences within [grace] of their scheduled time, and
+  /// * only occurrences the user has not already decided about. A day the user
+  ///   marked done, or consciously skipped, is theirs; overwriting it would
+  ///   turn "I let that one go" into "you went", which is a lie the dashboard
+  ///   would then repeat.
+  ///
+  /// A skipped or moved day is handled for free, because the candidates come
+  /// from [occurrencesForDate]: a SKIP override removes the day entirely, and a
+  /// MOVED one is matched against the time it was moved to.
+  ///
+  /// Returns what it ticked off, so a caller in the foreground can say so.
+  Future<List<Occurrence>> completeOnArrival({
+    required int placeId,
+    required DateTime at,
+    Duration grace = arrivalGrace,
+  }) async {
+    final completed = <Occurrence>[];
+
+    for (final date in datesInGraceOf(at, grace: grace)) {
+      for (final occurrence in await occurrencesForDate(date)) {
+        if (!occurrence.event.completesOnArrival) continue;
+        if (occurrence.event.placeId != placeId) continue;
+        // Idempotent by construction: a second enter for the same stay finds
+        // the occurrence already done and leaves it alone.
+        if (!occurrence.isPending) continue;
+        if (!arrivalCountsFor(
+          date: date,
+          timeOfDay: occurrence.effectiveTimeOfDay,
+          arrivedAt: at,
+          grace: grace,
+        )) {
+          continue;
+        }
+
+        await setCompletion(
+          eventId: occurrence.eventId,
+          date: date,
+          status: CompletionStatus.done,
+          // The moment of arrival, not the moment the callback ran: the OS can
+          // deliver a crossing minutes late, and the tick is about when the
+          // user got there.
+          at: at,
+          automatic: true,
+        );
+        completed.add(occurrence.copyWith(
+          status: CompletionStatus.done,
+          completedAt: at,
+          isAutomatic: true,
+        ));
+      }
+    }
+    return completed;
+  }
 
   /// Undoes a done/skipped mark, returning the occurrence to pending.
   Future<int> clearCompletion(int eventId, CalendarDate date) =>
@@ -277,6 +347,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         durationMin: row.durationMin,
         leadMinutes: row.leadMinutes,
         placeId: row.placeId,
+        autoCompleteOnArrival: row.autoCompleteOnArrival,
         rule: EventRule(
           recurrence: row.recurrence,
           timeOfDay: row.timeOfDay,

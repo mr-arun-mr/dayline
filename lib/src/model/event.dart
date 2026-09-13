@@ -15,6 +15,7 @@ class Event {
     this.durationMin,
     this.leadMinutes = const [],
     this.placeId,
+    this.autoCompleteOnArrival = false,
   });
 
   final int id;
@@ -37,6 +38,15 @@ class Event {
   /// actually go to the gym when the reminder fired" answerable. Null for the
   /// many routines that happen nowhere in particular.
   final int? placeId;
+
+  /// Whether arriving at [placeId] around the time this is due ticks it off
+  /// without the user having to.
+  final bool autoCompleteOnArrival;
+
+  /// Only true when there is somewhere to arrive at. A rule can carry the flag
+  /// with no place — clearing the place does not clear it — and that rule
+  /// simply never completes itself.
+  bool get completesOnArrival => autoCompleteOnArrival && placeId != null;
 
   int get timeOfDay => rule.timeOfDay;
   Recurrence get recurrence => rule.recurrence;
@@ -103,6 +113,7 @@ class Completion {
     required this.date,
     required this.status,
     required this.completedAt,
+    this.isAutomatic = false,
   });
 
   final int eventId;
@@ -112,4 +123,8 @@ class Completion {
   /// When the user tapped. A real instant, so this one *is* a UTC-backed
   /// timestamp — unlike anything schedule-shaped.
   final DateTime completedAt;
+
+  /// True when the app wrote this on arrival at a place rather than the user
+  /// marking it. The row says so, and so does the UI.
+  final bool isAutomatic;
 }

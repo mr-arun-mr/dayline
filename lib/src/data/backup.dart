@@ -59,9 +59,10 @@ class Backup {
     );
   }
 
-  /// Bumped to 2 when places and visits were added. Version 1 files still
-  /// restore — they simply have no places in them.
-  static const formatVersion = 2;
+  /// Bumped to 2 when places and visits were added, and to 3 for
+  /// auto-completion on arrival. Older files still restore: every field added
+  /// since is optional and reads back as off.
+  static const formatVersion = 3;
   static const _appName = 'dayline';
 
   final List<BackupEvent> events;
@@ -124,6 +125,7 @@ class BackupEvent {
     this.leadMinutes = const [],
     this.isActive = true,
     this.placeId,
+    this.autoCompleteOnArrival = false,
   });
 
   factory BackupEvent.fromJson(Map<String, dynamic> json) => BackupEvent(
@@ -145,6 +147,7 @@ class BackupEvent {
         .toList(),
     isActive: json['isActive'] as bool? ?? true,
     placeId: _optionalInt(json['placeId']),
+    autoCompleteOnArrival: json['autoCompleteOnArrival'] as bool? ?? false,
   );
 
   final int id;
@@ -162,6 +165,7 @@ class BackupEvent {
   final List<int> leadMinutes;
   final bool isActive;
   final int? placeId;
+  final bool autoCompleteOnArrival;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -179,6 +183,7 @@ class BackupEvent {
     if (endDate != null) 'endDate': endDate.toString(),
     if (leadMinutes.isNotEmpty) 'leadMinutes': leadMinutes,
     if (!isActive) 'isActive': false,
+    if (autoCompleteOnArrival) 'autoCompleteOnArrival': true,
   };
 }
 
@@ -188,6 +193,7 @@ class BackupCompletion {
     required this.date,
     required this.status,
     required this.completedAt,
+    this.isAutomatic = false,
   });
 
   factory BackupCompletion.fromJson(Map<String, dynamic> json) =>
@@ -200,6 +206,7 @@ class BackupCompletion {
         completedAt:
             DateTime.tryParse(json['completedAt'] as String? ?? '') ??
                 DateTime.fromMillisecondsSinceEpoch(0),
+        isAutomatic: json['auto'] as bool? ?? false,
       );
 
   final int eventId;
@@ -207,11 +214,16 @@ class BackupCompletion {
   final CompletionStatus status;
   final DateTime completedAt;
 
+  /// Whether the app ticked this off on arrival rather than the user. Written
+  /// as `auto` because it reads as a note on the row rather than a field name.
+  final bool isAutomatic;
+
   Map<String, dynamic> toJson() => {
     'eventId': eventId,
     'date': date.toString(),
     'status': status.name,
     'completedAt': completedAt.toIso8601String(),
+    if (isAutomatic) 'auto': true,
   };
 }
 

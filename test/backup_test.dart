@@ -70,7 +70,7 @@ void main() {
       await addGym();
       final json = await backups.exportJson();
       expect(json, contains('"app": "dayline"'));
-      expect(json, contains('"version": 2'));
+      expect(json, contains('"version": ${Backup.formatVersion}'));
       expect(json, contains('\n  '), reason: 'indented for a human');
     });
   });
@@ -345,6 +345,67 @@ void main() {
       final event = (await db.eventsDao.allEvents()).single;
       expect(event.placeId, place.id,
           reason: 'a link to the wrong place is worse than none');
+    });
+
+    test('auto-completion survives the round trip', () async {
+      final gym = await addGymPlace();
+      final id = await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'Gym',
+        colorValue: 1,
+        timeOfDay: 7 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today,
+        placeId: Value(gym),
+        autoCompleteOnArrival: const Value(true),
+      ));
+      await db.eventsDao.setCompletion(
+        eventId: id,
+        date: today,
+        status: CompletionStatus.done,
+        at: DateTime(2026, 8, 12, 7, 4),
+        automatic: true,
+      );
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.autoCompleteOnArrival, isTrue);
+      // The restored tick has to keep saying it was not the user's, or a
+      // restore quietly rewrites history as something they did by hand.
+      final completion = (await db.select(db.completions).get()).single;
+      expect(completion.isAutomatic, isTrue);
+    });
+
+    test('a rule with the flag but no place restores with the flag', () async {
+      // The flag can outlive the place. Dropping it on restore would silently
+      // change the rule; it is the link that is missing, not the intent.
+      const raw = '{"app":"dayline","version":3,"events":[{"id":1,'
+          '"title":"Gym","colorValue":1,"timeOfDay":420,"recurrence":"daily",'
+          '"startDate":"2026-08-12","autoCompleteOnArrival":true}]}';
+
+      await backups.importJson(raw);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.autoCompleteOnArrival, isTrue);
+      expect(event.placeId, isNull);
+      expect(event.completesOnArrival, isFalse,
+          reason: 'nothing to arrive at, so nothing will ever fire');
+    });
+
+    test('a version 2 file restores with auto-completion off', () async {
+      const raw = '{"app":"dayline","version":2,"events":[{"id":1,'
+          '"title":"Gym","colorValue":1,"timeOfDay":420,"recurrence":"daily",'
+          '"startDate":"2026-08-12"}],"completions":[{"eventId":1,'
+          '"date":"2026-08-12","status":"done",'
+          '"completedAt":"2026-08-12T07:04:00.000"}]}';
+
+      await backups.importJson(raw);
+
+      expect((await db.eventsDao.allEvents()).single.autoCompleteOnArrival,
+          isFalse);
+      expect((await db.select(db.completions).get()).single.isAutomatic,
+          isFalse);
     });
 
     test('a visit whose place is missing is dropped', () async {

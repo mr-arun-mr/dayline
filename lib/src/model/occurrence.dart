@@ -11,6 +11,7 @@ class Occurrence {
     this.status,
     this.completedAt,
     this.isMoved = false,
+    this.isAutomatic = false,
   });
 
   final Event event;
@@ -30,6 +31,11 @@ class Occurrence {
   final CompletionStatus? status;
   final DateTime? completedAt;
 
+  /// True when the tick came from arriving at the event's place rather than
+  /// from the user. Shown on the row, so a tick nobody remembers making has an
+  /// explanation attached.
+  final bool isAutomatic;
+
   int get eventId => event.id;
 
   bool get isDone => status == CompletionStatus.done;
@@ -48,6 +54,7 @@ class Occurrence {
     bool? isMoved,
     CompletionStatus? status,
     DateTime? completedAt,
+    bool? isAutomatic,
   }) => Occurrence(
     event: event,
     date: date,
@@ -55,5 +62,6 @@ class Occurrence {
     isMoved: isMoved ?? this.isMoved,
     status: status ?? this.status,
     completedAt: completedAt ?? this.completedAt,
+    isAutomatic: isAutomatic ?? this.isAutomatic,
   );
 }

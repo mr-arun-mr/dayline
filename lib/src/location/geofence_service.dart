@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:native_geofence/native_geofence.dart';
 
 import '../db/database.dart';
+import '../model/occurrence.dart';
 import '../model/place.dart';
 
 /// Registers the user's places with the OS and records what it reports back.
@@ -152,13 +153,20 @@ Future<void> geofenceTriggered(GeofenceCallbackParams params) async {
   }
 }
 
-/// The part worth testing: turning a crossing into a visit row.
-Future<void> applyGeofenceEvent({
+/// The part worth testing: turning a crossing into a visit row, and into a
+/// tick for whatever the user said arriving there completes.
+///
+/// Returns the occurrences auto-completed by this crossing, which is nothing
+/// at all for the ordinary case of arriving somewhere with no routine tied to
+/// it.
+Future<List<Occurrence>> applyGeofenceEvent({
   required DaylineDatabase db,
   required List<int> placeIds,
   required GeofenceEvent event,
   required DateTime at,
 }) async {
+  final completed = <Occurrence>[];
+
   for (final placeId in placeIds) {
     switch (event) {
       case GeofenceEvent.enter:
@@ -167,8 +175,15 @@ Future<void> applyGeofenceEvent({
       // idempotent, so an enter followed by a dwell is still one visit.
       case GeofenceEvent.dwell:
         await db.placesDao.recordArrival(placeId, at);
+        // Deliberately after the visit is recorded. If the tick were written
+        // first and the isolate died, there would be a completion with no
+        // arrival behind it — a tick the dashboard could not account for.
+        completed.addAll(
+          await db.eventsDao.completeOnArrival(placeId: placeId, at: at),
+        );
       case GeofenceEvent.exit:
         await db.placesDao.recordDeparture(placeId, at);
     }
   }
+  return completed;
 }

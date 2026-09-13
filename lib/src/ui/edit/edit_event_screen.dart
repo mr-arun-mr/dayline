@@ -69,6 +69,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
   int _interval = 2;
   int? _dayOfMonth;
   int? _placeId;
+  bool _autoCompleteOnArrival = false;
 
   bool _loading = true;
   bool _saving = false;
@@ -108,6 +109,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       _interval = event.rule.interval;
       _dayOfMonth = event.rule.dayOfMonth;
       _placeId = event.placeId;
+      _autoCompleteOnArrival = event.autoCompleteOnArrival;
       _loading = false;
     });
   }
@@ -237,7 +239,16 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
             const Divider(),
             _PlacePicker(
               placeId: _placeId,
-              onChanged: (value) => setState(() => _placeId = value),
+              onChanged: (value) => setState(() {
+                _placeId = value;
+                // "Mark done on arrival" with nowhere to arrive at is a
+                // promise the app cannot keep, so clearing the place clears
+                // the switch with it rather than leaving it on and inert.
+                if (value == null) _autoCompleteOnArrival = false;
+              }),
+              autoComplete: _autoCompleteOnArrival,
+              onAutoCompleteChanged: (value) =>
+                  setState(() => _autoCompleteOnArrival = value),
             ),
             const Divider(),
             _ColourPicker(
@@ -354,6 +365,8 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       leadMinutes: Value(_leadMinutes),
       isActive: const Value(true),
       placeId: Value(_placeId),
+      autoCompleteOnArrival:
+          Value(_placeId != null && _autoCompleteOnArrival),
     );
 
     if (_isNew) {
@@ -850,15 +863,25 @@ class _ColourPicker extends StatelessWidget {
   }
 }
 
-/// Optionally ties this routine to a place.
+/// Optionally ties this routine to a place, and offers to let arriving there
+/// tick it off.
 ///
 /// Only offered when the user has places at all — a picker whose only option
 /// is "nowhere" is a row that teaches nothing.
 class _PlacePicker extends ConsumerWidget {
-  const _PlacePicker({required this.placeId, required this.onChanged});
+  const _PlacePicker({
+    required this.placeId,
+    required this.onChanged,
+    required this.autoComplete,
+    required this.onAutoCompleteChanged,
+  });
 
   final int? placeId;
   final ValueChanged<int?> onChanged;
+
+  /// Whether arriving at the picked place marks the occurrence done.
+  final bool autoComplete;
+  final ValueChanged<bool> onAutoCompleteChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -912,9 +935,75 @@ class _PlacePicker extends ConsumerWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: 4),
+            _AutoCompleteSwitch(
+              value: autoComplete,
+              onChanged: onAutoCompleteChanged,
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// "Mark done when I get there".
+///
+/// Only ever shown with a place already picked, because arriving nowhere in
+/// particular is not an event. It also says plainly when it cannot work: with
+/// only "while using" location the OS never wakes the app, and a switch that
+/// silently does nothing is worse than one that admits it.
+class _AutoCompleteSwitch extends ConsumerWidget {
+  const _AutoCompleteSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    // Null while the permission is still being read — no claim either way
+    // until it is known.
+    final hasBackground = ref.watch(backgroundLocationProvider).value;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          key: const ValueKey('auto-complete-switch'),
+          contentPadding: EdgeInsets.zero,
+          value: value,
+          onChanged: onChanged,
+          title: const Text('Mark done on arrival'),
+          subtitle: const Text(
+            'Tick this off by itself when you get there around the time it '
+            'is due',
+          ),
+          secondary: Icon(
+            Icons.where_to_vote_outlined,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (value && hasBackground == false)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 16, color: theme.colorScheme.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Background location is off, so nothing will be marked '
+                    'until you allow it in Settings.',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.error),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

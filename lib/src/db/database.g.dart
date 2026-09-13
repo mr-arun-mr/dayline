@@ -685,6 +685,21 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
     requiredDuringInsert: false,
     $customConstraints: 'REFERENCES places(id) ON DELETE SET NULL',
   );
+  static const VerificationMeta _autoCompleteOnArrivalMeta =
+      const VerificationMeta('autoCompleteOnArrival');
+  @override
+  late final GeneratedColumn<bool> autoCompleteOnArrival =
+      GeneratedColumn<bool>(
+        'auto_complete_on_arrival',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("auto_complete_on_arrival" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -702,6 +717,7 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
     leadMinutes,
     isActive,
     placeId,
+    autoCompleteOnArrival,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -793,6 +809,15 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
         placeId.isAcceptableOrUnknown(data['place_id']!, _placeIdMeta),
       );
     }
+    if (data.containsKey('auto_complete_on_arrival')) {
+      context.handle(
+        _autoCompleteOnArrivalMeta,
+        autoCompleteOnArrival.isAcceptableOrUnknown(
+          data['auto_complete_on_arrival']!,
+          _autoCompleteOnArrivalMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -870,6 +895,10 @@ class $EventsTable extends Events with TableInfo<$EventsTable, EventRow> {
         DriftSqlType.int,
         data['${effectivePrefix}place_id'],
       ),
+      autoCompleteOnArrival: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_complete_on_arrival'],
+      )!,
     );
   }
 
@@ -923,6 +952,14 @@ class EventRow extends DataClass implements Insertable<EventRow> {
   /// Optionally ties this routine to a place, which is what makes "did you
   /// actually go to the gym when the reminder fired" answerable.
   final int? placeId;
+
+  /// Tick this one off by itself when the device arrives at [placeId] around
+  /// the time it is due.
+  ///
+  /// Meaningless without a place, and the editor only offers it once one is
+  /// picked — but stored independently so that clearing the place cannot leave
+  /// a rule quietly waiting for an arrival that can never come.
+  final bool autoCompleteOnArrival;
   const EventRow({
     required this.id,
     required this.title,
@@ -939,6 +976,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     required this.leadMinutes,
     required this.isActive,
     this.placeId,
+    required this.autoCompleteOnArrival,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -982,6 +1020,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     if (!nullToAbsent || placeId != null) {
       map['place_id'] = Variable<int>(placeId);
     }
+    map['auto_complete_on_arrival'] = Variable<bool>(autoCompleteOnArrival);
     return map;
   }
 
@@ -1012,6 +1051,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       placeId: placeId == null && nullToAbsent
           ? const Value.absent()
           : Value(placeId),
+      autoCompleteOnArrival: Value(autoCompleteOnArrival),
     );
   }
 
@@ -1036,6 +1076,9 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       leadMinutes: serializer.fromJson<List<int>>(json['leadMinutes']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       placeId: serializer.fromJson<int?>(json['placeId']),
+      autoCompleteOnArrival: serializer.fromJson<bool>(
+        json['autoCompleteOnArrival'],
+      ),
     );
   }
   @override
@@ -1057,6 +1100,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
       'leadMinutes': serializer.toJson<List<int>>(leadMinutes),
       'isActive': serializer.toJson<bool>(isActive),
       'placeId': serializer.toJson<int?>(placeId),
+      'autoCompleteOnArrival': serializer.toJson<bool>(autoCompleteOnArrival),
     };
   }
 
@@ -1076,6 +1120,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     List<int>? leadMinutes,
     bool? isActive,
     Value<int?> placeId = const Value.absent(),
+    bool? autoCompleteOnArrival,
   }) => EventRow(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -1092,6 +1137,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     leadMinutes: leadMinutes ?? this.leadMinutes,
     isActive: isActive ?? this.isActive,
     placeId: placeId.present ? placeId.value : this.placeId,
+    autoCompleteOnArrival: autoCompleteOnArrival ?? this.autoCompleteOnArrival,
   );
   EventRow copyWithCompanion(EventsCompanion data) {
     return EventRow(
@@ -1122,6 +1168,9 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           : this.leadMinutes,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       placeId: data.placeId.present ? data.placeId.value : this.placeId,
+      autoCompleteOnArrival: data.autoCompleteOnArrival.present
+          ? data.autoCompleteOnArrival.value
+          : this.autoCompleteOnArrival,
     );
   }
 
@@ -1142,7 +1191,8 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           ..write('endDate: $endDate, ')
           ..write('leadMinutes: $leadMinutes, ')
           ..write('isActive: $isActive, ')
-          ..write('placeId: $placeId')
+          ..write('placeId: $placeId, ')
+          ..write('autoCompleteOnArrival: $autoCompleteOnArrival')
           ..write(')'))
         .toString();
   }
@@ -1164,6 +1214,7 @@ class EventRow extends DataClass implements Insertable<EventRow> {
     leadMinutes,
     isActive,
     placeId,
+    autoCompleteOnArrival,
   );
   @override
   bool operator ==(Object other) =>
@@ -1183,7 +1234,8 @@ class EventRow extends DataClass implements Insertable<EventRow> {
           other.endDate == this.endDate &&
           other.leadMinutes == this.leadMinutes &&
           other.isActive == this.isActive &&
-          other.placeId == this.placeId);
+          other.placeId == this.placeId &&
+          other.autoCompleteOnArrival == this.autoCompleteOnArrival);
 }
 
 class EventsCompanion extends UpdateCompanion<EventRow> {
@@ -1202,6 +1254,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
   final Value<List<int>> leadMinutes;
   final Value<bool> isActive;
   final Value<int?> placeId;
+  final Value<bool> autoCompleteOnArrival;
   const EventsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -1218,6 +1271,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     this.leadMinutes = const Value.absent(),
     this.isActive = const Value.absent(),
     this.placeId = const Value.absent(),
+    this.autoCompleteOnArrival = const Value.absent(),
   });
   EventsCompanion.insert({
     this.id = const Value.absent(),
@@ -1235,6 +1289,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     this.leadMinutes = const Value.absent(),
     this.isActive = const Value.absent(),
     this.placeId = const Value.absent(),
+    this.autoCompleteOnArrival = const Value.absent(),
   }) : title = Value(title),
        colorValue = Value(colorValue),
        timeOfDay = Value(timeOfDay),
@@ -1256,6 +1311,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     Expression<String>? leadMinutes,
     Expression<bool>? isActive,
     Expression<int>? placeId,
+    Expression<bool>? autoCompleteOnArrival,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1273,6 +1329,8 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
       if (leadMinutes != null) 'lead_minutes': leadMinutes,
       if (isActive != null) 'is_active': isActive,
       if (placeId != null) 'place_id': placeId,
+      if (autoCompleteOnArrival != null)
+        'auto_complete_on_arrival': autoCompleteOnArrival,
     });
   }
 
@@ -1292,6 +1350,7 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     Value<List<int>>? leadMinutes,
     Value<bool>? isActive,
     Value<int?>? placeId,
+    Value<bool>? autoCompleteOnArrival,
   }) {
     return EventsCompanion(
       id: id ?? this.id,
@@ -1309,6 +1368,8 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
       leadMinutes: leadMinutes ?? this.leadMinutes,
       isActive: isActive ?? this.isActive,
       placeId: placeId ?? this.placeId,
+      autoCompleteOnArrival:
+          autoCompleteOnArrival ?? this.autoCompleteOnArrival,
     );
   }
 
@@ -1368,6 +1429,11 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
     if (placeId.present) {
       map['place_id'] = Variable<int>(placeId.value);
     }
+    if (autoCompleteOnArrival.present) {
+      map['auto_complete_on_arrival'] = Variable<bool>(
+        autoCompleteOnArrival.value,
+      );
+    }
     return map;
   }
 
@@ -1388,7 +1454,8 @@ class EventsCompanion extends UpdateCompanion<EventRow> {
           ..write('endDate: $endDate, ')
           ..write('leadMinutes: $leadMinutes, ')
           ..write('isActive: $isActive, ')
-          ..write('placeId: $placeId')
+          ..write('placeId: $placeId, ')
+          ..write('autoCompleteOnArrival: $autoCompleteOnArrival')
           ..write(')'))
         .toString();
   }
@@ -1441,8 +1508,29 @@ class $CompletionsTable extends Completions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isAutomaticMeta = const VerificationMeta(
+    'isAutomatic',
+  );
   @override
-  List<GeneratedColumn> get $columns => [eventId, date, status, completedAt];
+  late final GeneratedColumn<bool> isAutomatic = GeneratedColumn<bool>(
+    'is_automatic',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_automatic" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    eventId,
+    date,
+    status,
+    completedAt,
+    isAutomatic,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1474,6 +1562,15 @@ class $CompletionsTable extends Completions
     } else if (isInserting) {
       context.missing(_completedAtMeta);
     }
+    if (data.containsKey('is_automatic')) {
+      context.handle(
+        _isAutomaticMeta,
+        isAutomatic.isAcceptableOrUnknown(
+          data['is_automatic']!,
+          _isAutomaticMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1503,6 +1600,10 @@ class $CompletionsTable extends Completions
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
       )!,
+      isAutomatic: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_automatic'],
+      )!,
     );
   }
 
@@ -1522,11 +1623,17 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
   final CalendarDate date;
   final CompletionStatus status;
   final DateTime completedAt;
+
+  /// True when the app ticked this off on arrival rather than the user. Kept
+  /// so the row can say why it is ticked: a tick the user did not make and
+  /// cannot account for is worse than no tick.
+  final bool isAutomatic;
   const CompletionRow({
     required this.eventId,
     required this.date,
     required this.status,
     required this.completedAt,
+    required this.isAutomatic,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1541,6 +1648,7 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
       );
     }
     map['completed_at'] = Variable<DateTime>(completedAt);
+    map['is_automatic'] = Variable<bool>(isAutomatic);
     return map;
   }
 
@@ -1550,6 +1658,7 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
       date: Value(date),
       status: Value(status),
       completedAt: Value(completedAt),
+      isAutomatic: Value(isAutomatic),
     );
   }
 
@@ -1563,6 +1672,7 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
       date: serializer.fromJson<CalendarDate>(json['date']),
       status: serializer.fromJson<CompletionStatus>(json['status']),
       completedAt: serializer.fromJson<DateTime>(json['completedAt']),
+      isAutomatic: serializer.fromJson<bool>(json['isAutomatic']),
     );
   }
   @override
@@ -1573,6 +1683,7 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
       'date': serializer.toJson<CalendarDate>(date),
       'status': serializer.toJson<CompletionStatus>(status),
       'completedAt': serializer.toJson<DateTime>(completedAt),
+      'isAutomatic': serializer.toJson<bool>(isAutomatic),
     };
   }
 
@@ -1581,11 +1692,13 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
     CalendarDate? date,
     CompletionStatus? status,
     DateTime? completedAt,
+    bool? isAutomatic,
   }) => CompletionRow(
     eventId: eventId ?? this.eventId,
     date: date ?? this.date,
     status: status ?? this.status,
     completedAt: completedAt ?? this.completedAt,
+    isAutomatic: isAutomatic ?? this.isAutomatic,
   );
   CompletionRow copyWithCompanion(CompletionsCompanion data) {
     return CompletionRow(
@@ -1595,6 +1708,9 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
       completedAt: data.completedAt.present
           ? data.completedAt.value
           : this.completedAt,
+      isAutomatic: data.isAutomatic.present
+          ? data.isAutomatic.value
+          : this.isAutomatic,
     );
   }
 
@@ -1604,13 +1720,15 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
           ..write('eventId: $eventId, ')
           ..write('date: $date, ')
           ..write('status: $status, ')
-          ..write('completedAt: $completedAt')
+          ..write('completedAt: $completedAt, ')
+          ..write('isAutomatic: $isAutomatic')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(eventId, date, status, completedAt);
+  int get hashCode =>
+      Object.hash(eventId, date, status, completedAt, isAutomatic);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1618,7 +1736,8 @@ class CompletionRow extends DataClass implements Insertable<CompletionRow> {
           other.eventId == this.eventId &&
           other.date == this.date &&
           other.status == this.status &&
-          other.completedAt == this.completedAt);
+          other.completedAt == this.completedAt &&
+          other.isAutomatic == this.isAutomatic);
 }
 
 class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
@@ -1626,12 +1745,14 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
   final Value<CalendarDate> date;
   final Value<CompletionStatus> status;
   final Value<DateTime> completedAt;
+  final Value<bool> isAutomatic;
   final Value<int> rowid;
   const CompletionsCompanion({
     this.eventId = const Value.absent(),
     this.date = const Value.absent(),
     this.status = const Value.absent(),
     this.completedAt = const Value.absent(),
+    this.isAutomatic = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CompletionsCompanion.insert({
@@ -1639,6 +1760,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
     required CalendarDate date,
     required CompletionStatus status,
     required DateTime completedAt,
+    this.isAutomatic = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : eventId = Value(eventId),
        date = Value(date),
@@ -1649,6 +1771,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
     Expression<int>? date,
     Expression<int>? status,
     Expression<DateTime>? completedAt,
+    Expression<bool>? isAutomatic,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1656,6 +1779,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
       if (date != null) 'date': date,
       if (status != null) 'status': status,
       if (completedAt != null) 'completed_at': completedAt,
+      if (isAutomatic != null) 'is_automatic': isAutomatic,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1665,6 +1789,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
     Value<CalendarDate>? date,
     Value<CompletionStatus>? status,
     Value<DateTime>? completedAt,
+    Value<bool>? isAutomatic,
     Value<int>? rowid,
   }) {
     return CompletionsCompanion(
@@ -1672,6 +1797,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
       date: date ?? this.date,
       status: status ?? this.status,
       completedAt: completedAt ?? this.completedAt,
+      isAutomatic: isAutomatic ?? this.isAutomatic,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1695,6 +1821,9 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
+    if (isAutomatic.present) {
+      map['is_automatic'] = Variable<bool>(isAutomatic.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1708,6 +1837,7 @@ class CompletionsCompanion extends UpdateCompanion<CompletionRow> {
           ..write('date: $date, ')
           ..write('status: $status, ')
           ..write('completedAt: $completedAt, ')
+          ..write('isAutomatic: $isAutomatic, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3078,6 +3208,7 @@ typedef $$EventsTableCreateCompanionBuilder =
       Value<List<int>> leadMinutes,
       Value<bool> isActive,
       Value<int?> placeId,
+      Value<bool> autoCompleteOnArrival,
     });
 typedef $$EventsTableUpdateCompanionBuilder =
     EventsCompanion Function({
@@ -3096,6 +3227,7 @@ typedef $$EventsTableUpdateCompanionBuilder =
       Value<List<int>> leadMinutes,
       Value<bool> isActive,
       Value<int?> placeId,
+      Value<bool> autoCompleteOnArrival,
     });
 
 final class $$EventsTableReferences
@@ -3236,6 +3368,11 @@ class $$EventsTableFilterComposer
 
   ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoCompleteOnArrival => $composableBuilder(
+    column: $table.autoCompleteOnArrival,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3392,6 +3529,11 @@ class $$EventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get autoCompleteOnArrival => $composableBuilder(
+    column: $table.autoCompleteOnArrival,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PlacesTableOrderingComposer get placeId {
     final $$PlacesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -3480,6 +3622,11 @@ class $$EventsTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get autoCompleteOnArrival => $composableBuilder(
+    column: $table.autoCompleteOnArrival,
+    builder: (column) => column,
+  );
 
   $$PlacesTableAnnotationComposer get placeId {
     final $$PlacesTableAnnotationComposer composer = $composerBuilder(
@@ -3602,6 +3749,7 @@ class $$EventsTableTableManager
                 Value<List<int>> leadMinutes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<int?> placeId = const Value.absent(),
+                Value<bool> autoCompleteOnArrival = const Value.absent(),
               }) => EventsCompanion(
                 id: id,
                 title: title,
@@ -3618,6 +3766,7 @@ class $$EventsTableTableManager
                 leadMinutes: leadMinutes,
                 isActive: isActive,
                 placeId: placeId,
+                autoCompleteOnArrival: autoCompleteOnArrival,
               ),
           createCompanionCallback:
               ({
@@ -3636,6 +3785,7 @@ class $$EventsTableTableManager
                 Value<List<int>> leadMinutes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<int?> placeId = const Value.absent(),
+                Value<bool> autoCompleteOnArrival = const Value.absent(),
               }) => EventsCompanion.insert(
                 id: id,
                 title: title,
@@ -3652,6 +3802,7 @@ class $$EventsTableTableManager
                 leadMinutes: leadMinutes,
                 isActive: isActive,
                 placeId: placeId,
+                autoCompleteOnArrival: autoCompleteOnArrival,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3779,6 +3930,7 @@ typedef $$CompletionsTableCreateCompanionBuilder =
       required CalendarDate date,
       required CompletionStatus status,
       required DateTime completedAt,
+      Value<bool> isAutomatic,
       Value<int> rowid,
     });
 typedef $$CompletionsTableUpdateCompanionBuilder =
@@ -3787,6 +3939,7 @@ typedef $$CompletionsTableUpdateCompanionBuilder =
       Value<CalendarDate> date,
       Value<CompletionStatus> status,
       Value<DateTime> completedAt,
+      Value<bool> isAutomatic,
       Value<int> rowid,
     });
 
@@ -3839,6 +3992,11 @@ class $$CompletionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isAutomatic => $composableBuilder(
+    column: $table.isAutomatic,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$EventsTableFilterComposer get eventId {
     final $$EventsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -3887,6 +4045,11 @@ class $$CompletionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isAutomatic => $composableBuilder(
+    column: $table.isAutomatic,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$EventsTableOrderingComposer get eventId {
     final $$EventsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -3928,6 +4091,11 @@ class $$CompletionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isAutomatic => $composableBuilder(
+    column: $table.isAutomatic,
     builder: (column) => column,
   );
 
@@ -3987,12 +4155,14 @@ class $$CompletionsTableTableManager
                 Value<CalendarDate> date = const Value.absent(),
                 Value<CompletionStatus> status = const Value.absent(),
                 Value<DateTime> completedAt = const Value.absent(),
+                Value<bool> isAutomatic = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CompletionsCompanion(
                 eventId: eventId,
                 date: date,
                 status: status,
                 completedAt: completedAt,
+                isAutomatic: isAutomatic,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4001,12 +4171,14 @@ class $$CompletionsTableTableManager
                 required CalendarDate date,
                 required CompletionStatus status,
                 required DateTime completedAt,
+                Value<bool> isAutomatic = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CompletionsCompanion.insert(
                 eventId: eventId,
                 date: date,
                 status: status,
                 completedAt: completedAt,
+                isAutomatic: isAutomatic,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

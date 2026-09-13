@@ -328,8 +328,9 @@ flutter test --exclude-tags screenshots
   countdown, Later today, and Done folded away. Tap a row to mark it done,
   long-press for skip / move / edit.
 - **Add & Edit** — all five recurrence shapes (once, daily, weekly, every N
-  days, monthly), lead reminders, colour, notes, end date, and a plain-English
-  preview of the rule you have actually built.
+  days, monthly), lead reminders, colour, notes, end date, an optional place
+  with *mark done on arrival*, and a plain-English preview of the rule you have
+  actually built.
 - **All events** — every rule with its schedule and streak; swipe to delete,
   toggle to pause.
 - **Settings** — notification and exact-alarm status, the battery-optimisation
@@ -353,6 +354,34 @@ coordinates is a Tesco or a Cineworld; it only knows it is the spot you called
 
 The OS watches a handful of circles and wakes the app when the device crosses
 one. There is no continuous location stream, so the battery cost is small.
+
+### Marking things done by turning up
+
+Tie a routine to a place and the editor offers **Mark done on arrival**. With
+it on, walking into that place around the time the thing is due ticks it off
+by itself — no notification to catch, no app to open. The row then says *Done
+on arrival* rather than sitting there looking as though you pressed something
+you do not remember pressing.
+
+The rules it follows, in full:
+
+- **Only around the right time.** Two hours either side of the scheduled time,
+  which is the same grace *Did you go?* judges by. Walking into the gym at
+  lunchtime does not complete the 07:00 class.
+- **Only what you asked for.** It is off by default, per event, and there is
+  nothing to enable globally.
+- **Never over your own decision.** A day you marked done, or consciously
+  skipped, is left exactly as it is. The app may tick off a day you have not
+  touched; it may never touch a day you have.
+- **Never the last word.** An automatic tick is undone by tapping it, like any
+  other.
+
+A moved occurrence is matched against the time it was moved to, and a skipped
+day is not a candidate at all. Arrivals are noticed while the app is closed,
+so this needs background location — without it the switch says so rather than
+quietly doing nothing.
+
+### What the dashboard answers
 
 The dashboard answers four questions:
 
@@ -378,6 +407,10 @@ without losing the places themselves, and it is included in backups.
 Export writes a single JSON file and hands it to the share sheet. Nothing is
 uploaded — the app has no internet permission, so where the file goes next is
 entirely your choice.
+
+A completion the app made on arrival is exported as such, so a restore does not
+quietly turn it into something you ticked by hand. Older backups still import;
+they simply have no auto-completing rules in them.
 
 The format is deliberately plain: dates as `yyyy-MM-dd`, times as minutes since
 midnight, no timestamps anywhere in the schedule. A backup taken in Sydney

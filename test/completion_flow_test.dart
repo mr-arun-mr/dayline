@@ -142,6 +142,65 @@ void main() {
     await close(tester);
   });
 
+  group('a tick the app made', () {
+    testWidgets('says so on the row', (tester) async {
+      // The one thing auto-completion must never be is a mystery: a tick the
+      // user does not remember making needs its reason attached.
+      final gym = await add('Gym', 7 * 60);
+      await db.eventsDao.setCompletion(
+        eventId: gym,
+        date: today,
+        status: CompletionStatus.done,
+        at: DateTime(2026, 9, 11, 7, 4),
+        automatic: true,
+      );
+
+      await pumpApp(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Show'));
+      await settle(tester);
+
+      expect(find.textContaining('Done on arrival'), findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('a tick the user made says nothing extra', (tester) async {
+      final gym = await add('Gym', 7 * 60);
+      await db.eventsDao.setCompletion(
+          eventId: gym, date: today, status: CompletionStatus.done);
+
+      await pumpApp(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Show'));
+      await settle(tester);
+
+      expect(find.textContaining('Done on arrival'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('can still be undone by hand', (tester) async {
+      // The app's guess is never the last word.
+      final gym = await add('Gym', 7 * 60);
+      await db.eventsDao.setCompletion(
+        eventId: gym,
+        date: today,
+        status: CompletionStatus.done,
+        automatic: true,
+      );
+
+      await pumpApp(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Show'));
+      await settle(tester);
+      await tester.tap(find.byType(OccurrenceTile).first);
+      await settle(tester);
+
+      expect(await db.select(db.completions).get(), isEmpty);
+      expect(find.text('OVERDUE  1'), findsOneWidget);
+
+      await close(tester);
+    });
+  });
+
   group('the long-press sheet', () {
     testWidgets('skips today without counting it against you', (tester) async {
       await add('Gym', 7 * 60);
