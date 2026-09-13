@@ -207,7 +207,8 @@ offline.
 Local notifications and geofences both need a signed build on real hardware. A
 free Apple ID is enough for your own phone.
 
-1. Open the **workspace**, not the project:
+1. Open the project in Xcode. With no CocoaPods in play the workspace and the
+   project are equivalent; either opens fine.
 
    ```bash
    open ios/Runner.xcworkspace
