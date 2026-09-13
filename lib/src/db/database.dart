@@ -6,10 +6,12 @@ import 'package:drift_flutter/drift_flutter.dart';
 // them directly.
 import '../model/calendar_date.dart';
 import '../model/event.dart';
+import '../model/holiday.dart';
 import '../model/place.dart';
 import '../model/recurrence.dart';
 import 'converters.dart';
 import 'events_dao.dart';
+import 'holidays_dao.dart';
 import 'places_dao.dart';
 import 'settings_dao.dart';
 import 'tables.dart';
@@ -17,8 +19,8 @@ import 'tables.dart';
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [Events, Completions, Overrides, Settings, Places, Visits],
-  daos: [EventsDao, SettingsDao, PlacesDao],
+  tables: [Events, Completions, Overrides, Settings, Places, Visits, Holidays],
+  daos: [EventsDao, SettingsDao, PlacesDao, HolidaysDao],
 )
 class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase() : super(_openConnection());
@@ -27,7 +29,7 @@ class DaylineDatabase extends _$DaylineDatabase {
   DaylineDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +52,11 @@ class DaylineDatabase extends _$DaylineDatabase {
       if (from < 5) {
         await m.addColumn(places, places.addVisitsToDay);
         await m.addColumn(events, events.fromVisitId);
+      }
+      // v6 added holidays, and which timetable an event belongs to.
+      if (from < 6) {
+        await m.createTable(holidays);
+        await m.addColumn(events, events.holidayScope);
       }
     },
     beforeOpen: (details) async {

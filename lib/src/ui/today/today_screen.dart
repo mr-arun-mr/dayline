@@ -14,6 +14,7 @@ import '../settings/settings_screen.dart';
 import '../theme.dart';
 import 'battery_card.dart';
 import 'day_strip.dart';
+import 'holiday_banner.dart';
 import 'move_occurrence_sheet.dart';
 import 'next_up_card.dart';
 import 'now_divider.dart';
@@ -56,6 +57,7 @@ class TodayScreen extends ConsumerWidget {
             ),
             const Divider(height: 1),
             const BatteryOptimisationCard(),
+            HolidayBanner(date: selected),
             Expanded(
               child: switch (occurrences) {
                 AsyncData() =>

@@ -333,12 +333,60 @@ flutter test --exclude-tags screenshots
   actually built.
 - **All events** — every rule with its schedule and streak; swipe to delete,
   toggle to pause.
+- **Holidays** — days when work or school steps aside, and only what you have
+  put on those timetables goes with them. See below.
 - **Settings** — notification and exact-alarm status, the battery-optimisation
-  help card, background-location status, light/dark/system, and JSON export and
-  import.
+  help card, background-location status, holidays, light/dark/system, and JSON
+  export and import.
 - **Places & Dashboard** — places you add yourself, and what the time actually
   went on. Events tied to a place show planned against actual, mark themselves
   done on arrival, and can file the visits you never planned. See below.
+
+## Holidays
+
+Record a bank holiday, a week off or half-term under **Settings → Holidays**,
+and the days it covers stop happening — for the things you said belong to that
+timetable, and nothing else.
+
+A holiday closes a **timetable**, not a day. Each one says what is shut — Work,
+School, or both — and each event says which timetable it is on, under *Pauses
+on* in the editor. The default is **Nothing**, and it will stay that way for
+almost everything:
+
+> Medication is still medication on Christmas Day. An app that quietly
+> cancelled it because the office was shut would be dangerous rather than
+> clever.
+
+So the school run is tagged *School holidays*, the standup *Work holidays*, and
+the gym, the plants and the pills are tagged nothing at all. Half-term then
+clears the school run and leaves your working day alone, which a single
+is-it-a-holiday flag could not do.
+
+Holidays are ranges, because a week off is the common case and ticking seven
+days one at a time is not a feature. Two can overlap — a bank holiday inside a
+fortnight of leave — and a day covered twice is closed exactly once.
+
+**It reaches the alarm clock, not just the screen.** This is the half that is
+invisible until it goes wrong: a daily rule is normally one native repeating
+trigger that fires forever, and the OS knows nothing about any of this. A
+holiday inside the scheduling window drops that repeat and schedules the
+window day by day instead, leaving the closed days out. Hiding the school run
+from the day while the phone still sounded at 07:00 on Christmas morning would
+be worse than not having the feature at all.
+
+The day itself says so rather than just going quiet — a missing school run with
+nothing on screen to explain it is indistinguishable from a bug:
+
+```
+┌──────────────────────────────────────┐
+│ 🏖  Half-term                         │
+│    School events are paused          │
+└──────────────────────────────────────┘
+```
+
+Nothing is deleted. The rules are untouched, history already recorded against a
+day that later became a holiday stays exactly as it was, and removing the
+holiday brings the day straight back.
 
 ## Places and the dashboard
 
@@ -452,6 +500,10 @@ quietly turn it into something you ticked by hand, and an event written from a
 visit is restored still pointing at that same stay rather than at whatever now
 holds its old id. Older backups still import; they simply have none of this in
 them.
+
+Holidays travel with everything else, and an event's timetable with it. A
+timetable this build does not recognise is dropped rather than guessed at: the
+event restores and simply never pauses, which is the safe direction to fail in.
 
 The format is deliberately plain: dates as `yyyy-MM-dd`, times as minutes since
 midnight, no timestamps anywhere in the schedule. A backup taken in Sydney

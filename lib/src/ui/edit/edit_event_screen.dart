@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../db/database.dart';
 import '../../model/calendar_date.dart';
+import '../../model/holiday.dart';
 import '../../model/place.dart';
 import '../../model/recurrence.dart';
 import '../../model/rule_description.dart';
 import '../../providers.dart';
 import '../event_colors.dart';
+import '../holidays/holidays_screen.dart';
 import '../theme.dart';
 import 'delete_scope_sheet.dart';
 
@@ -70,6 +72,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
   int? _dayOfMonth;
   int? _placeId;
   bool _autoCompleteOnArrival = false;
+  HolidayScope? _holidayScope;
 
   bool _loading = true;
   bool _saving = false;
@@ -110,6 +113,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       _dayOfMonth = event.rule.dayOfMonth;
       _placeId = event.placeId;
       _autoCompleteOnArrival = event.autoCompleteOnArrival;
+      _holidayScope = event.holidayScope;
       _loading = false;
     });
   }
@@ -251,6 +255,11 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
                   setState(() => _autoCompleteOnArrival = value),
             ),
             const Divider(),
+            _HolidayScopePicker(
+              scope: _holidayScope,
+              onChanged: (value) => setState(() => _holidayScope = value),
+            ),
+            const Divider(),
             _ColourPicker(
               selected: _colorValue,
               onChanged: (value) => setState(() => _colorValue = value),
@@ -372,6 +381,7 @@ class _EditEventScreenState extends ConsumerState<EditEventScreen> {
       // being tidied away with the visit history, and a later departure stops
       // reaching in to rewrite its duration.
       fromVisitId: const Value(null),
+      holidayScope: Value(_holidayScope),
     );
 
     if (_isNew) {
@@ -862,6 +872,83 @@ class _ColourPicker extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which timetable this event belongs to, and so which holidays cancel it.
+///
+/// "Nothing" is the default and will stay the answer for almost everything.
+/// Medication is still medication on Christmas Day, and an app that quietly
+/// cancelled it because the office was shut would be dangerous rather than
+/// clever — so a scope has to be chosen deliberately, one event at a time.
+class _HolidayScopePicker extends ConsumerWidget {
+  const _HolidayScopePicker({required this.scope, required this.onChanged});
+
+  final HolidayScope? scope;
+  final ValueChanged<HolidayScope?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final holidays = ref.watch(holidaysProvider).value ?? const <Holiday>[];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        14,
+        DaylineTheme.gutter,
+        14,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.beach_access_outlined,
+                  color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 16),
+              Text('Pauses on', style: theme.textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                key: const ValueKey('holiday-scope-none'),
+                label: const Text('Nothing'),
+                selected: scope == null,
+                onSelected: (isOn) {
+                  if (isOn) onChanged(null);
+                },
+              ),
+              for (final value in HolidayScope.values)
+                ChoiceChip(
+                  key: ValueKey('holiday-scope-${value.name}'),
+                  label: Text('${describeScope(value)} holidays'),
+                  selected: value == scope,
+                  onSelected: (isOn) => onChanged(isOn ? value : null),
+                ),
+            ],
+          ),
+          if (scope != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              holidays.isEmpty
+                  ? 'No holidays recorded yet, so nothing pauses it. Add them '
+                      'under Settings → Holidays.'
+                  : 'Dropped from the day — and from its reminders — whenever '
+                      '${describeScope(scope!).toLowerCase()} is closed.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
       ),
     );

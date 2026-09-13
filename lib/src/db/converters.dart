@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../model/calendar_date.dart';
 import '../model/event.dart';
+import '../model/holiday.dart';
 import '../model/place.dart';
 import '../model/recurrence.dart';
 
@@ -67,6 +68,23 @@ class LeadMinutesConverter extends TypeConverter<List<int>, String> {
 
   @override
   String toSql(List<int> value) => jsonEncode(value);
+}
+
+/// A single scope on an event: which timetable it belongs to, if any.
+///
+/// An unrecognised code reads back as [HolidayScope.work] rather than
+/// throwing — but [HolidayScope.fromCode] is the one that decides, and a row
+/// written by a newer build simply stops pausing rather than taking the whole
+/// query down with it.
+class HolidayScopeConverter extends TypeConverter<HolidayScope, int> {
+  const HolidayScopeConverter();
+
+  @override
+  HolidayScope fromSql(int fromDb) =>
+      HolidayScope.fromCode(fromDb) ?? HolidayScope.work;
+
+  @override
+  int toSql(HolidayScope value) => value.code;
 }
 
 class PlaceKindConverter extends TypeConverter<PlaceKind, int> {

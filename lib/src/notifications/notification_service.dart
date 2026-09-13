@@ -191,7 +191,7 @@ class NotificationService {
     await _syncTimeZone();
 
     final events = await _db.eventsDao.allEvents();
-    final exceptions = await _loadExceptions(now);
+    final exceptions = await _loadExceptions(now, events);
 
     final plan = planReminders(
       events: events,
@@ -220,14 +220,27 @@ class NotificationService {
     }
   }
 
+  /// [_loadExceptions], reachable from a test.
+  ///
+  /// Exposed because the interesting half of holiday handling is the schedule
+  /// rather than the screen, and the rest of `reconcile` needs a notification
+  /// plugin that a unit test has no way to stand up.
+  @visibleForTesting
+  static Future<Map<int, List<OccurrenceException>>> loadExceptions(
+    DaylineDatabase db,
+    DateTime now,
+    List<Event> events,
+  ) =>
+      NotificationService(db)._loadExceptions(now, events);
+
   Future<Map<int, List<OccurrenceException>>> _loadExceptions(
     DateTime now,
+    List<Event> events,
   ) async {
     final today = CalendarDate.fromDateTime(now);
-    final rows = await _db.eventsDao.overridesBetween(
-      today,
-      today.addDays(defaultHorizonDays),
-    );
+    final horizonEnd = today.addDays(defaultHorizonDays);
+
+    final rows = await _db.eventsDao.overridesBetween(today, horizonEnd);
     final byEvent = <int, List<OccurrenceException>>{};
     for (final row in rows) {
       byEvent.putIfAbsent(row.eventId, () => []).add(
@@ -238,6 +251,30 @@ class NotificationService {
         ),
       );
     }
+
+    // A holiday is a skip as far as the scheduler is concerned, so it goes in
+    // through the same door. That matters more than it looks: an event with an
+    // exception in the window cannot use a repeating trigger, so feeding
+    // holidays in here is exactly what stops a DAILY rule's native repeat from
+    // firing the school run alarm at 07:00 on Christmas morning — which the OS
+    // would otherwise do, because a repeating trigger knows nothing about any
+    // of this.
+    final holidays = await _db.holidaysDao.holidaysBetween(today, horizonEnd);
+    if (holidays.isNotEmpty) {
+      for (final event in events) {
+        if (event.holidayScope == null) continue;
+        for (var date = today;
+            !date.isAfter(horizonEnd);
+            date = date.addDays(1)) {
+          if (!event.rule.occursOn(date)) continue;
+          if (!event.isPausedOn(date, holidays)) continue;
+          byEvent.putIfAbsent(event.id, () => []).add(
+            OccurrenceException(date: date),
+          );
+        }
+      }
+    }
+
     return byEvent;
   }
 

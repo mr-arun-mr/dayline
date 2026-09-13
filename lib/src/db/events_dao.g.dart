@@ -9,6 +9,7 @@ mixin _$EventsDaoMixin on DatabaseAccessor<DaylineDatabase> {
   $EventsTable get events => attachedDatabase.events;
   $CompletionsTable get completions => attachedDatabase.completions;
   $OverridesTable get overrides => attachedDatabase.overrides;
+  $HolidaysTable get holidays => attachedDatabase.holidays;
   EventsDaoManager get managers => EventsDaoManager(this);
 }
 
@@ -25,4 +26,6 @@ class EventsDaoManager {
       $$CompletionsTableTableManager(_db.attachedDatabase, _db.completions);
   $$OverridesTableTableManager get overrides =>
       $$OverridesTableTableManager(_db.attachedDatabase, _db.overrides);
+  $$HolidaysTableTableManager get holidays =>
+      $$HolidaysTableTableManager(_db.attachedDatabase, _db.holidays);
 }

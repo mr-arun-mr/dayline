@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../model/holiday.dart';
 import '../model/recurrence.dart';
 import 'converters.dart';
 
@@ -81,6 +82,40 @@ class Events extends Table {
   IntColumn get fromVisitId => integer()
       .nullable()
       .customConstraint('REFERENCES visits(id) ON DELETE CASCADE')();
+
+  /// Which timetable this belongs to, if any — and so which holidays take the
+  /// day off for it.
+  ///
+  /// Null for almost everything, and that is the point: medication is still
+  /// medication on Christmas Day. Only what belongs to an institution that
+  /// closes gets a scope.
+  IntColumn get holidayScope =>
+      integer().nullable().map(const HolidayScopeConverter())();
+}
+
+/// A day, or a run of days, when some part of the week does not happen.
+///
+/// Stored as a range because a week off is the common case. Dates are epoch
+/// days like every other date here, never timestamps: a holiday is the same
+/// day everywhere on earth.
+@DataClassName('HolidayRow')
+@TableIndex(name: 'idx_holidays_start', columns: {#startDate})
+class Holidays extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get name => text().withLength(min: 1, max: 120)();
+
+  IntColumn get startDate => integer().map(const CalendarDateConverter())();
+
+  /// Inclusive, and equal to [startDate] for a single day. Not nullable, which
+  /// on the events table means "forever" and here would mean a holiday that
+  /// never ends.
+  IntColumn get endDate => integer().map(const CalendarDateConverter())();
+
+  /// [HolidayScopes] mask. Defaults to everything, which is what a public
+  /// holiday is.
+  IntColumn get scopes => integer()
+      .withDefault(const Constant(HolidayScopes.everything))();
 }
 
 /// Written only when the user acts on an occurrence. An untouched day costs no

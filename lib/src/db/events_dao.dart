@@ -15,7 +15,7 @@ import 'tables.dart';
 
 part 'events_dao.g.dart';
 
-@DriftAccessor(tables: [Events, Completions, Overrides, Visits])
+@DriftAccessor(tables: [Events, Completions, Overrides, Visits, Holidays])
 class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin {
   EventsDao(super.db);
 
@@ -68,9 +68,15 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
                   e.endDate.isBiggerOrEqualValue(epochDay))))
         .get();
 
+    // A holiday removes a whole timetable from the day, so it is asked before
+    // anything else is read: on a closed day there is usually nothing left to
+    // join completions or visits to.
+    final holidays = await attachedDatabase.holidaysDao.holidaysOnDate(date);
+
     final candidates = candidateRows
         .map(_toEvent)
-        .where((event) => event.rule.occursOn(date))
+        .where((event) =>
+            event.rule.occursOn(date) && !event.isPausedOn(date, holidays))
         .toList();
     if (candidates.isEmpty) return const [];
 
@@ -170,6 +176,8 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
             overrides,
             // Arriving somewhere changes the day without changing a rule.
             visits,
+            // So does declaring the day a holiday.
+            holidays,
           ]),
         ),
         read: () => occurrencesForDate(date),
@@ -494,6 +502,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         placeId: row.placeId,
         autoCompleteOnArrival: row.autoCompleteOnArrival,
         fromVisitId: row.fromVisitId,
+        holidayScope: row.holidayScope,
         rule: EventRule(
           recurrence: row.recurrence,
           timeOfDay: row.timeOfDay,

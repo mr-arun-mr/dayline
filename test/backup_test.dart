@@ -3,6 +3,7 @@ import 'package:dayline/src/data/backup_service.dart';
 import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/model/calendar_date.dart';
 import 'package:dayline/src/model/event.dart';
+import 'package:dayline/src/model/holiday.dart';
 import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/recurrence.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -72,6 +73,106 @@ void main() {
       expect(json, contains('"app": "dayline"'));
       expect(json, contains('"version": ${Backup.formatVersion}'));
       expect(json, contains('\n  '), reason: 'indented for a human');
+    });
+  });
+
+  group('holidays', () {
+    test('round trip with their dates and what they close', () async {
+      await db.holidaysDao.insertHoliday(HolidaysCompanion.insert(
+        name: 'Half-term',
+        startDate: today,
+        endDate: today.addDays(4),
+        scopes: const Value(HolidayScopes.school),
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      final holiday = (await db.holidaysDao.allHolidays()).single;
+      expect(holiday.name, 'Half-term');
+      expect(holiday.startDate, today);
+      expect(holiday.endDate, today.addDays(4));
+      expect(holiday.scopes, HolidayScopes.school);
+    });
+
+    test("an event's timetable survives the trip", () async {
+      await db.eventsDao.insertEvent(EventsCompanion.insert(
+        title: 'School run',
+        colorValue: 1,
+        timeOfDay: 8 * 60,
+        recurrence: Recurrence.daily,
+        startDate: today,
+        holidayScope: const Value(HolidayScope.school),
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+
+      expect((await db.eventsDao.allEvents()).single.holidayScope,
+          HolidayScope.school);
+    });
+
+    test('written as dates, like everything else in the file', () async {
+      await db.holidaysDao.insertHoliday(HolidaysCompanion.insert(
+        name: 'Christmas',
+        startDate: today,
+        endDate: today,
+      ));
+
+      final json = await backups.exportJson();
+      expect(json, contains('"startDate": "$today"'));
+      expect(json, isNot(contains('T00:00:00')));
+    });
+
+    test('replace clears the old ones rather than stacking them', () async {
+      await db.holidaysDao.insertHoliday(HolidaysCompanion.insert(
+        name: 'Christmas',
+        startDate: today,
+        endDate: today,
+      ));
+      final json = await backups.exportJson();
+
+      await backups.importJson(json);
+      await backups.importJson(json);
+
+      expect(await db.holidaysDao.allHolidays(), hasLength(1));
+    });
+
+    test('a version 4 file restores with no holidays and nothing paused',
+        () async {
+      const raw = '{"app":"dayline","version":4,"events":[{"id":1,'
+          '"title":"Standup","colorValue":1,"timeOfDay":540,'
+          '"recurrence":"daily","startDate":"2026-08-12"}]}';
+
+      await backups.importJson(raw);
+
+      expect(await db.holidaysDao.allHolidays(), isEmpty);
+      expect((await db.eventsDao.allEvents()).single.holidayScope, isNull);
+    });
+
+    test('an unknown timetable is dropped, not guessed at', () async {
+      // Written by a newer build. The event restores and simply never pauses,
+      // which is the safe direction to fail in.
+      const raw = '{"app":"dayline","version":5,"events":[{"id":1,'
+          '"title":"Gym","colorValue":1,"timeOfDay":420,"recurrence":"daily",'
+          '"startDate":"2026-08-12","holidayScope":"university"}]}';
+
+      await backups.importJson(raw);
+
+      final event = (await db.eventsDao.allEvents()).single;
+      expect(event.title, 'Gym');
+      expect(event.holidayScope, isNull);
+    });
+
+    test('a holiday with no end date is that one day', () async {
+      const raw = '{"app":"dayline","version":5,"events":[],'
+          '"holidays":[{"name":"Christmas","startDate":"2026-12-25"}]}';
+
+      await backups.importJson(raw);
+
+      final holiday = (await db.holidaysDao.allHolidays()).single;
+      expect(holiday.isSingleDay, isTrue);
+      expect(holiday.startDate, const CalendarDate(2026, 12, 25));
     });
   });
 

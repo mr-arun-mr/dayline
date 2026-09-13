@@ -22,6 +22,7 @@ class ImportResult {
     required this.overrides,
     this.places = 0,
     this.visits = 0,
+    this.holidays = 0,
   });
 
   final int events;
@@ -29,6 +30,7 @@ class ImportResult {
   final int overrides;
   final int places;
   final int visits;
+  final int holidays;
 }
 
 /// Reads and writes the whole database as one JSON document.
@@ -43,6 +45,7 @@ class BackupService {
     final overrides = await _db.select(_db.overrides).get();
     final places = await _db.select(_db.places).get();
     final visits = await _db.select(_db.visits).get();
+    final holidays = await _db.select(_db.holidays).get();
 
     return Backup(
       exportedAt: at ?? DateTime.now(),
@@ -66,6 +69,7 @@ class BackupService {
             placeId: e.placeId,
             autoCompleteOnArrival: e.autoCompleteOnArrival,
             fromVisitId: e.fromVisitId,
+            holidayScope: e.holidayScope,
           ),
       ],
       places: [
@@ -80,6 +84,15 @@ class BackupService {
             kind: p.kind,
             isActive: p.isActive,
             addVisitsToDay: p.addVisitsToDay,
+          ),
+      ],
+      holidays: [
+        for (final h in holidays)
+          BackupHoliday(
+            name: h.name,
+            startDate: h.startDate,
+            endDate: h.endDate,
+            scopes: h.scopes,
           ),
       ],
       visits: [
@@ -134,6 +147,7 @@ class BackupService {
     var overrides = 0;
     var places = 0;
     var visits = 0;
+    var holidays = 0;
 
     await _db.transaction(() async {
       if (mode == ImportMode.replace) {
@@ -141,6 +155,7 @@ class BackupService {
         // their places.
         await _db.delete(_db.events).go();
         await _db.delete(_db.places).go();
+        await _db.delete(_db.holidays).go();
       }
 
       // Places go in first: an event can point at one, so the new ids have to
@@ -181,6 +196,21 @@ class BackupService {
         visits++;
       }
 
+      // Holidays carry no ids and nothing points at them, so they simply go
+      // in. A merge can therefore end up with the same bank holiday twice,
+      // which is harmless: covering a day twice closes it exactly once.
+      for (final holiday in backup.holidays) {
+        await _db.into(_db.holidays).insert(
+          HolidaysCompanion.insert(
+            name: holiday.name,
+            startDate: holiday.startDate,
+            endDate: holiday.endDate,
+            scopes: Value(holiday.scopes),
+          ),
+        );
+        holidays++;
+      }
+
       final idMap = <int, int>{};
       for (final event in backup.events) {
         final newId = await _db.into(_db.events).insert(
@@ -204,6 +234,7 @@ class BackupService {
               event.placeId == null ? null : placeIdMap[event.placeId],
             ),
             autoCompleteOnArrival: Value(event.autoCompleteOnArrival),
+            holidayScope: Value(event.holidayScope),
             // A link that cannot be resolved is dropped rather than guessed
             // at: the event stays, as an ordinary one of the user's own, which
             // is exactly what an unlinked visit record is.
@@ -255,6 +286,7 @@ class BackupService {
       overrides: overrides,
       places: places,
       visits: visits,
+      holidays: holidays,
     );
   }
 

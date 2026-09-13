@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../model/calendar_date.dart';
 import '../model/event.dart';
+import '../model/holiday.dart';
 import '../model/place.dart';
 import '../model/recurrence.dart';
 
@@ -22,6 +23,7 @@ class Backup {
     required this.overrides,
     this.places = const [],
     this.visits = const [],
+    this.holidays = const [],
     this.exportedAt,
   });
 
@@ -56,13 +58,16 @@ class Backup {
           _list(parsed['overrides']).map(BackupOverride.fromJson).toList(),
       places: _list(parsed['places']).map(BackupPlace.fromJson).toList(),
       visits: _list(parsed['visits']).map(BackupVisit.fromJson).toList(),
+      holidays:
+          _list(parsed['holidays']).map(BackupHoliday.fromJson).toList(),
     );
   }
 
   /// Bumped to 2 when places and visits were added, to 3 for auto-completion
-  /// on arrival, and to 4 for visits filed onto the day as events. Older files
-  /// still restore: every field added since is optional and reads back as off.
-  static const formatVersion = 4;
+  /// on arrival, to 4 for visits filed onto the day as events, and to 5 for
+  /// holidays. Older files still restore: every field added since is optional
+  /// and reads back as off.
+  static const formatVersion = 5;
   static const _appName = 'dayline';
 
   final List<BackupEvent> events;
@@ -70,6 +75,7 @@ class Backup {
   final List<BackupOverride> overrides;
   final List<BackupPlace> places;
   final List<BackupVisit> visits;
+  final List<BackupHoliday> holidays;
 
   /// Informational only — never read back, so a skewed clock cannot affect a
   /// restore.
@@ -84,6 +90,7 @@ class Backup {
     'overrides': overrides.map((o) => o.toJson()).toList(),
     'places': places.map((p) => p.toJson()).toList(),
     'visits': visits.map((v) => v.toJson()).toList(),
+    'holidays': holidays.map((h) => h.toJson()).toList(),
   };
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
@@ -127,6 +134,7 @@ class BackupEvent {
     this.placeId,
     this.autoCompleteOnArrival = false,
     this.fromVisitId,
+    this.holidayScope,
   });
 
   factory BackupEvent.fromJson(Map<String, dynamic> json) => BackupEvent(
@@ -150,6 +158,7 @@ class BackupEvent {
     placeId: _optionalInt(json['placeId']),
     autoCompleteOnArrival: json['autoCompleteOnArrival'] as bool? ?? false,
     fromVisitId: _optionalInt(json['fromVisitId']),
+    holidayScope: _holidayScope(json['holidayScope']),
   );
 
   final int id;
@@ -173,6 +182,9 @@ class BackupEvent {
   /// user. Remapped through the file's visit ids on the way back in.
   final int? fromVisitId;
 
+  /// Which timetable this belongs to, and so which holidays pause it.
+  final HolidayScope? holidayScope;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -191,6 +203,40 @@ class BackupEvent {
     if (!isActive) 'isActive': false,
     if (autoCompleteOnArrival) 'autoCompleteOnArrival': true,
     if (fromVisitId != null) 'fromVisitId': fromVisitId,
+    if (holidayScope != null) 'holidayScope': holidayScope!.name,
+  };
+}
+
+class BackupHoliday {
+  const BackupHoliday({
+    required this.name,
+    required this.startDate,
+    required this.endDate,
+    this.scopes = HolidayScopes.everything,
+  });
+
+  factory BackupHoliday.fromJson(Map<String, dynamic> json) => BackupHoliday(
+    name: _string(json, 'name'),
+    startDate: _date(json, 'startDate'),
+    // A file written by hand may give only the one day, which is a range
+    // whose ends are equal rather than a holiday that never ends.
+    endDate: _optionalDate(json['endDate']) ?? _date(json, 'startDate'),
+    scopes: _optionalInt(json['scopes']) ?? HolidayScopes.everything,
+  );
+
+  final String name;
+  final CalendarDate startDate;
+  final CalendarDate endDate;
+
+  /// [HolidayScopes] mask. A plain integer in the file rather than a list of
+  /// names, matching how the weekday mask is already written.
+  final int scopes;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'startDate': startDate.toString(),
+    if (endDate != startDate) 'endDate': endDate.toString(),
+    if (scopes != HolidayScopes.everything) 'scopes': scopes,
   };
 }
 
@@ -368,6 +414,16 @@ DateTime _instant(Map<String, dynamic> json, String key) {
     throw BackupFormatException('An entry is missing its $key.');
   }
   return parsed;
+}
+
+HolidayScope? _holidayScope(Object? value) {
+  if (value == null) return null;
+  for (final scope in HolidayScope.values) {
+    if (scope.name == value) return scope;
+  }
+  // A scope this build does not know about. The event still restores; it just
+  // stops pausing, which is the safe direction to fail in.
+  return null;
 }
 
 PlaceKind _placeKind(Object? value) {

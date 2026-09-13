@@ -5,12 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/backup_service.dart';
 import 'model/event.dart';
+import 'model/holiday.dart';
 import 'model/place.dart';
 import 'model/streak.dart';
 
 import 'db/database.dart';
 import 'db/events_dao.dart';
 import 'db/foreground_refresh.dart';
+import 'db/holidays_dao.dart';
 import 'db/places_dao.dart';
 import 'db/settings_dao.dart';
 import 'model/calendar_date.dart';
@@ -94,6 +96,19 @@ final streakProvider = StreamProvider.family<Streak, int>((ref, eventId) {
     );
   });
 });
+
+final holidaysDaoProvider =
+    Provider<HolidaysDao>((ref) => ref.watch(databaseProvider).holidaysDao);
+
+/// Every holiday the user has recorded, soonest first.
+final holidaysProvider = StreamProvider<List<Holiday>>(
+  (ref) => ref.watch(holidaysDaoProvider).watchHolidays(),
+);
+
+// Which holidays cover a given day is `holidaysOn(...)` over this list. It is
+// a pure filter over a handful of rows, so it stays at the call site rather
+// than becoming a provider family that opens a fresh query per date scrubbed
+// to.
 
 final placesDaoProvider =
     Provider<PlacesDao>((ref) => ref.watch(databaseProvider).placesDao);

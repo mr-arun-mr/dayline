@@ -11,7 +11,9 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/backup.dart';
 import '../../data/backup_service.dart';
 import '../../db/settings_dao.dart';
+import '../../model/holiday.dart';
 import '../../providers.dart';
+import '../holidays/holidays_screen.dart';
 import '../places/places_screen.dart';
 import '../theme.dart';
 
@@ -179,6 +181,7 @@ class _LocationStatus extends ConsumerWidget {
           subtitle: const Text('Add, edit or remove the places you track'),
           onTap: () => PlacesScreen.open(context),
         ),
+        const _HolidaysTile(),
         ListTile(
           minTileHeight: DaylineTheme.rowMinHeight,
           leading: Icon(Icons.delete_sweep_outlined, color: scheme.error),
@@ -487,3 +490,33 @@ class _DataFootnote extends StatelessWidget {
 void _tell(BuildContext context, String message) =>
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+
+/// The way in to holidays, with a count so the row says whether there are any.
+class _HolidaysTile extends ConsumerWidget {
+  const _HolidaysTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final holidays = ref.watch(holidaysProvider).value ?? const <Holiday>[];
+    final today = ref.watch(todayProvider);
+    final onToday = holidaysOn(holidays, today);
+    final upcoming =
+        holidays.where((h) => !h.endDate.isBefore(today)).length;
+
+    return ListTile(
+      minTileHeight: DaylineTheme.rowMinHeight,
+      leading: const Icon(Icons.beach_access_outlined),
+      title: const Text('Holidays'),
+      subtitle: Text(
+        switch ((onToday.isNotEmpty, upcoming)) {
+          (true, _) => 'Today is ${onToday.first.name}',
+          (false, 0) => 'Days when work or school steps aside',
+          (false, 1) => '1 coming up',
+          (false, final count) => '$count coming up',
+        },
+      ),
+      onTap: () => HolidaysScreen.open(context),
+    );
+  }
+}
+

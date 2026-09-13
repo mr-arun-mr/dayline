@@ -1,4 +1,5 @@
 import 'calendar_date.dart';
+import 'holiday.dart';
 import 'recurrence.dart';
 
 /// A recurrence rule plus everything the UI needs to draw it.
@@ -17,6 +18,7 @@ class Event {
     this.placeId,
     this.autoCompleteOnArrival = false,
     this.fromVisitId,
+    this.holidayScope,
   });
 
   final int id;
@@ -57,6 +59,17 @@ class Event {
   /// to do. Both belong on the day; only the second is a plan, so only the
   /// second is counted, listed under All events, or judged on the dashboard.
   bool get isVisitRecord => fromVisitId != null;
+
+  /// Which timetable this belongs to, and so which holidays cancel it.
+  ///
+  /// Null for almost everything. An event only has a scope if it belongs to
+  /// something that closes — the school run, the standup — and everything
+  /// else goes on happening whatever the calendar says.
+  final HolidayScope? holidayScope;
+
+  /// Whether this event does not happen on [date], given [holidays].
+  bool isPausedOn(CalendarDate date, Iterable<Holiday> holidays) =>
+      pausedByHoliday(holidayScope, holidays, date);
 
   int get timeOfDay => rule.timeOfDay;
   Recurrence get recurrence => rule.recurrence;

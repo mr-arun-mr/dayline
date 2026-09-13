@@ -31,6 +31,10 @@ void main() {
   /// is built here, rather than writing the old DDL out by hand: whatever else
   /// changes, what comes out is a real database of that version.
   const addedBy = {
+    6: [
+      'DROP TABLE holidays',
+      'ALTER TABLE events DROP COLUMN holiday_scope',
+    ],
     5: [
       'ALTER TABLE places DROP COLUMN add_visits_to_day',
       'ALTER TABLE events DROP COLUMN from_visit_id',
@@ -141,6 +145,26 @@ void main() {
     expect(event.title, 'Gym');
     expect(event.isVisitRecord, isFalse);
     expect((await db.placesDao.allPlaces()).single.addVisitsToDay, isFalse);
+  });
+
+  test('a v3 database has no holidays and nothing pausing', () async {
+    await writeVersion3Database();
+
+    final db = DaylineDatabase.forTesting(NativeDatabase(file));
+    addTearDown(db.close);
+
+    expect(await db.holidaysDao.allHolidays(), isEmpty);
+    expect((await db.eventsDao.allEvents()).single.holidayScope, isNull);
+  });
+
+  test('a v5 database upgrades too, straight from where it is', () async {
+    await writeOldDatabase(5);
+
+    final db = DaylineDatabase.forTesting(NativeDatabase(file));
+    addTearDown(db.close);
+
+    expect((await db.eventsDao.allEvents()).single.title, 'Gym');
+    expect(await db.holidaysDao.allHolidays(), isEmpty);
   });
 
   test('the upgraded database takes new rows with the new columns', () async {
