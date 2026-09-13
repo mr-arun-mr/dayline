@@ -18,7 +18,7 @@ toolchains.
 | --- | --- |
 | Run the tests, analyze, generate code | Flutter SDK only |
 | Build and install on Android | Flutter SDK + Android SDK (via Android Studio) |
-| Build and install on iOS | Flutter SDK + full Xcode + CocoaPods, on a Mac |
+| Build and install on iOS | Flutter SDK + full Xcode + its iOS platform components, on a Mac |
 
 Check what you have:
 
@@ -148,7 +148,22 @@ exact path differs per manufacturer.
 ### One-time setup
 
 1. Install **Xcode** from the App Store.
-2. Point the toolchain at it and finish first launch. Both need your password:
+2. Install the **iOS platform components**. Xcode ships without them, and the
+   build fails at the storyboard step with *"iOS 26.5 Platform Not Installed"*.
+   Run it as root so the runtime is both installed **and** mounted — installed
+   unprivileged it leaves an image that never mounts, and `xcrun simctl list
+   runtimes` stays empty:
+
+   ```bash
+   sudo xcodebuild -downloadPlatform iOS
+   ```
+
+   It is about 8.5 GB. Do **not** also start the same download from Xcode →
+   Settings → Components. Two downloads racing leave duplicate images that
+   mount as *Unusable*, and deleting those duplicates can take the shared
+   asset with them, forcing a full re-download.
+
+3. Point the toolchain at Xcode and finish first launch. Both need your password:
 
    ```bash
    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
@@ -158,23 +173,20 @@ exact path differs per manufacturer.
    sudo xcodebuild -runFirstLaunch
    ```
 
-3. Accept the licence:
+4. Confirm the runtime registered, and that `flutter doctor` is green:
 
    ```bash
-   sudo xcodebuild -license accept
+   xcrun simctl list runtimes
    ```
-
-4. CocoaPods is already installed if you followed this file; otherwise:
-
-   ```bash
-   brew install cocoapods
-   ```
-
-5. Confirm everything is green:
 
    ```bash
    flutter doctor
    ```
+
+**CocoaPods is not used.** Every iOS plugin here ships as a Swift Package, so
+the project is SPM-only: no `Podfile`, no `pod install`. Flutter refuses to mix
+the two and warns on every build that the project "uses a non-standard Podfile"
+if a `Podfile` is present. If you find one in `ios/`, it was added by mistake.
 
 ### Build
 
@@ -183,18 +195,12 @@ flutter pub get
 ```
 
 ```bash
-cd ios && pod install && cd ..
-```
-
-```bash
 flutter build ios --release
 ```
 
-`pod install` is the step that needs Xcode; it resolves the native side of
-`flutter_local_notifications`, `geolocator`, `native_geofence`, `sqlite3` and
-the rest. The `ios/Podfile` in this repo pins the platform to **iOS 15**
-deliberately — the plugins do not agree on a minimum (two of them need 14) and
-an unset platform leaves CocoaPods on a lower default that fails to resolve.
+Xcode resolves the Swift Package dependencies on the first build. That takes a
+few minutes and is the one step that needs a network; everything after it is
+offline.
 
 ### Install on your iPhone
 
@@ -240,6 +246,33 @@ reinstalled. A paid developer account extends that to a year.
 Note that Dayline declares **no `UIBackgroundModes`**. Geofences use region
 monitoring, which iOS relaunches the app for on its own; the `location`
 background mode is for continuous tracking, which this app never does.
+
+### Running in the Simulator
+
+```bash
+flutter run -d "iPhone 17"
+```
+
+**If the app launches to a blank white screen in the Simulator and nothing ever
+happens, check where this repo lives.** A debug simulator build bakes an
+absolute rpath into `Runner.debug.dylib` pointing at
+`<project>/build/ios/Debug-iphonesimulator/PackageFrameworks`. If the project
+sits inside a folder macOS protects with TCC — `~/Documents`, `~/Desktop` or
+`~/Downloads` — the simulated app has to read from there while it is still
+dynamically linking. That fires a consent request nothing ever answers, and
+`dyld` blocks in `open()` forever: no Dart, no logs, no crash, just white.
+
+Two ways out: keep the checkout somewhere unprotected (`~/dev/dayline`), or
+grant **Simulator** access to that folder under System Settings → Privacy &
+Security → Files and Folders.
+
+This affects debug simulator builds only. Release builds for a real device
+resolve frameworks through `@executable_path/Frameworks` and carry no
+reference to the build directory at all — confirm with:
+
+```bash
+otool -l build/ios/iphoneos/Runner.app/Runner | grep -A2 LC_RPATH
+```
 
 ### Build an IPA for distribution
 

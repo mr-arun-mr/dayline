@@ -13,16 +13,45 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final database = DaylineDatabase();
-  if (kDebugMode) await DebugSeed.populate(database);
-
   final container = ProviderContainer(
     overrides: [databaseProvider.overrideWithValue(database)],
   );
 
-  // Set up the OS side before the first frame, so a cold start repairs
-  // anything a reboot or a timezone change knocked out.
-  await container.read(notificationServiceProvider).initialise();
-  unawaited(container.read(reminderSyncProvider).start());
+  // The first frame does not wait on any of the OS setup below. A plugin that
+  // is slow to answer — or never answers — must not be able to hold the app on
+  // a blank screen, which is exactly what it did when this was all awaited
+  // ahead of runApp.
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const DaylineApp(),
+    ),
+  );
+
+  unawaited(_startUp(container, database));
+}
+
+/// Everything the app needs in place soon, but not before it can draw.
+Future<void> _startUp(
+  ProviderContainer container,
+  DaylineDatabase database,
+) async {
+  if (kDebugMode) {
+    try {
+      await DebugSeed.populate(database);
+    } catch (error) {
+      debugPrint('Dayline: debug seed failed — $error');
+    }
+  }
+
+  // Set up the OS side early, so a cold start repairs anything a reboot or a
+  // timezone change knocked out.
+  try {
+    await container.read(notificationServiceProvider).initialise();
+    unawaited(container.read(reminderSyncProvider).start());
+  } catch (error) {
+    debugPrint('Dayline: could not initialise notifications — $error');
+  }
 
   // Geofences do not survive a reboot either, so they are re-registered on
   // every cold start for the same reason the reminders are.
@@ -33,12 +62,5 @@ Future<void> main() async {
       debugPrint('Dayline: could not register geofences — $error');
       return 0;
     }),
-  );
-
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const DaylineApp(),
-    ),
   );
 }
