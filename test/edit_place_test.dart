@@ -58,6 +58,58 @@ void main() {
 
   final switchKey = find.byKey(const ValueKey('add-visits-switch'));
 
+  Future<int> addNeighbour({
+    double latitude = 51.5004,
+    double radius = Place.defaultRadiusMeters,
+  }) =>
+      db.placesDao.insertPlace(PlacesCompanion.insert(
+        name: 'GS',
+        latitude: latitude,
+        longitude: -0.12,
+        radiusMeters: Value(radius),
+        colorValue: 0xFF10B981,
+        kind: PlaceKind.shop,
+      ));
+
+  group('circles that run into each other', () {
+    testWidgets('says which place is too close, and how close', (tester) async {
+      // 44 m apart, with the radius floor at 100 m: standing in either one the
+      // OS reports both, which is how the same hours end up on the day twice
+      // under two names.
+      await addNeighbour();
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(find.textContaining('GS is 44 m away'), findsOneWidget);
+
+      await close(tester);
+    });
+
+    testWidgets('and nothing at all when they are comfortably apart',
+        (tester) async {
+      // 556 m between the centres, 300 m of radius between them.
+      await addNeighbour(latitude: 51.505);
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(find.textContaining('away'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('a place does not run into itself', (tester) async {
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(find.textContaining('away'), findsNothing);
+
+      await close(tester);
+    });
+  });
+
   testWidgets('is offered, and off, on a place that has never had it',
       (tester) async {
     final gym = await addGym();
