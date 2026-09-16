@@ -22,6 +22,7 @@ import 'occurrence_sheet.dart';
 import 'occurrence_tile.dart';
 import 'progress_ring.dart';
 import 'section_header.dart';
+import 'visit_stop.dart';
 
 /// The home screen: one line of a day's events, in order.
 class TodayScreen extends ConsumerWidget {
@@ -176,9 +177,14 @@ class _Header extends ConsumerWidget {
   }
 }
 
-/// Overdue, then the now line, then what is next, then the rest, then what has
-/// already been dealt with — folded away, because a finished thing should stop
-/// taking up room.
+/// The day as one line: what has already happened, then the now line, then
+/// what is next, then the rest.
+///
+/// Everything keeps its place in time. A finished event stays where it was
+/// done rather than being swept into a pile at the bottom, and the stays the
+/// phone recorded sit between the events either side of them, threaded onto
+/// the same rail. What can be folded away is done *events*, and only because
+/// the user asked: a stay is not a task, so it is never hidden.
 class _DayList extends ConsumerStatefulWidget {
   const _DayList({
     required this.summary,
@@ -195,7 +201,9 @@ class _DayList extends ConsumerStatefulWidget {
 }
 
 class _DayListState extends ConsumerState<_DayList> {
-  bool _doneExpanded = false;
+  /// Done events keep their place in the day by default. The user can fold
+  /// them away — but only them: stays are not a pile to be tidied.
+  bool _doneHidden = false;
 
   Future<void> _toggleDone(Occurrence occurrence) async {
     final dao = ref.read(eventsDaoProvider);
@@ -243,13 +251,48 @@ class _DayListState extends ConsumerState<_DayList> {
     }
   }
 
-  Widget _tile(Occurrence occurrence, {required bool isPast}) => OccurrenceTile(
-    key: ValueKey('row-${occurrence.eventId}-${occurrence.date}'),
-    occurrence: occurrence,
-    isPast: isPast,
-    onTap: () => _toggleDone(occurrence),
-    onLongPress: () => _openSheet(occurrence),
-  );
+  /// One run of rows, threaded together.
+  ///
+  /// The day is one line, so a row knows whether it has a neighbour above and
+  /// below: the thread is drawn between rows and stops at the ends of the run,
+  /// where a header, the now line or the next-up card breaks it.
+  List<Widget> _run(List<Occurrence> occurrences) => [
+    for (var i = 0; i < occurrences.length; i++)
+      if (occurrences[i].isVisitRecord)
+        VisitStop(
+          key: ValueKey(
+            'stay-${occurrences[i].eventId}-${occurrences[i].date}',
+          ),
+          occurrence: occurrences[i],
+          now: widget.now,
+          linkedAbove: i > 0,
+          linkedBelow: i < occurrences.length - 1,
+          onOpen: () => _openSheet(occurrences[i]),
+        )
+      else
+        OccurrenceTile(
+          key: ValueKey('row-${occurrences[i].eventId}-${occurrences[i].date}'),
+          occurrence: occurrences[i],
+          // Dimmed once its time has gone, and only on today: on a day that
+          // is wholly in the past, dimming every row says nothing.
+          isPast: widget.summary.isToday &&
+              occurrences[i].isPast(widget.now),
+          linkedAbove: i > 0,
+          linkedBelow: i < occurrences.length - 1,
+          onTap: () => _toggleDone(occurrences[i]),
+          onLongPress: () => _openSheet(occurrences[i]),
+        ),
+  ];
+
+  /// What the day list is showing, in the order it happened.
+  ///
+  /// Hiding is for events, and only for the ones already dealt with: a place
+  /// the phone recorded you at is part of the day's record and stays put.
+  List<Occurrence> _shown(List<Occurrence> occurrences) => _doneHidden
+      ? occurrences
+          .where((o) => o.isVisitRecord || o.isPending)
+          .toList()
+      : occurrences;
 
   @override
   Widget build(BuildContext context) {
@@ -257,19 +300,31 @@ class _DayListState extends ConsumerState<_DayList> {
     if (summary.isEmpty) return _EmptyState(isToday: summary.isToday);
 
     final children = <Widget>[];
+    final earlier = _shown(summary.earlier);
+    final later = _shown(summary.later);
 
-    if (summary.overdue.isNotEmpty) {
+    // Kept while things are hidden even if that leaves the section empty:
+    // the control that hid them is the only way to get them back.
+    if (earlier.isNotEmpty || _doneHidden) {
       children.add(SectionHeader(
-        label: 'Overdue',
-        count: summary.overdue.length,
-        emphasis: true,
+        label: summary.isToday ? 'Earlier today' : 'The day',
+        // Overdue is said on the rows themselves now that they sit in their
+        // own place in the day, rather than by a section gathering them up.
+        trailing: summary.done.isEmpty && !_doneHidden
+            ? null
+            : TextButton(
+                onPressed: () => setState(() => _doneHidden = !_doneHidden),
+                child: Text(_doneHidden ? 'Show done' : 'Hide done'),
+              ),
       ));
-      children.addAll(
-        summary.overdue.map((o) => _tile(o, isPast: true)),
-      );
+      children.addAll(_run(earlier));
     }
 
-    if (summary.showsNowDivider) children.add(NowDivider(now: widget.now));
+    // Nothing behind the line means the line is the top of the list, which
+    // separates the day from nothing at all.
+    if (summary.showsNowDivider && earlier.isNotEmpty) {
+      children.add(NowDivider(now: widget.now));
+    }
 
     if (summary.nextUp case final next?) {
       children.add(const SectionHeader(label: 'Next up'));
@@ -281,25 +336,11 @@ class _DayListState extends ConsumerState<_DayList> {
       ));
     }
 
-    if (summary.later.isNotEmpty) {
+    if (later.isNotEmpty) {
       children.add(SectionHeader(
         label: summary.isToday ? 'Later today' : 'Planned',
       ));
-      children.addAll(summary.later.map((o) => _tile(o, isPast: false)));
-    }
-
-    if (summary.done.isNotEmpty) {
-      children.add(SectionHeader(
-        label: 'Done',
-        count: summary.done.length,
-        trailing: TextButton(
-          onPressed: () => setState(() => _doneExpanded = !_doneExpanded),
-          child: Text(_doneExpanded ? 'Hide' : 'Show'),
-        ),
-      ));
-      if (_doneExpanded) {
-        children.addAll(summary.done.map((o) => _tile(o, isPast: true)));
-      }
+      children.addAll(_run(later));
     }
 
     return ListView(

@@ -324,9 +324,12 @@ flutter test --exclude-tags screenshots
 
 ## What is in it
 
-- **Today** — one line of the day: Overdue, the now line, Next up with a live
-  countdown, Later today, and Done folded away. Tap a row to mark it done,
-  long-press for skip / move / edit.
+- **Today** — the day as one line, threaded top to bottom: everything keeps
+  its place in time, with the now line between what has happened and what has
+  not and Next up carrying a live countdown. A finished event stays where it
+  was done rather than being swept into a pile at the bottom, and the places
+  the phone recorded you at sit between the events either side of them. Tap a
+  row to mark it done, long-press for skip / move / edit.
 - **Add & Edit** — all five recurrence shapes (once, daily, weekly, every N
   days, monthly), lead reminders, colour, notes, end date, an optional place
   with *mark done on arrival*, and a plain-English preview of the rule you have
@@ -484,6 +487,22 @@ row saying the same thing is the noise this is meant to remove.
 These entries are the day's record, not rules, so they stay out of All events,
 out of the dashboard's adherence, and out of the progress ring — "2 of 3 done"
 stays a count of what you meant to do. They go when the visit history does.
+
+On the day itself they are drawn as part of its line, pinned to the thread
+twice — once where you arrived and once where you left — so the day reads as a
+journey rather than as a stack of unrelated rows:
+
+```
+07:00  ●  Gym                                          done
+07:04  ●  Gym                                        1h 8m
+08:12  ○  Visited
+  ──  08:42  ────────────────────────────────────────────
+09:00  ○  Standup
+```
+
+**Hide done** folds away events that have been ticked or skipped, and only
+those. A stay is never hidden: it is not a task that was tidied up, it already
+happened, and it is the one part of the day the app knows for certain.
 Edit one and it becomes yours: an ordinary event that stops being tidied away
 with the history.
 

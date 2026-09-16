@@ -1,31 +1,36 @@
 import 'event.dart';
 import 'occurrence.dart';
 
-/// Where an occurrence belongs on the Today screen.
+/// Where an occurrence sits on the Today screen.
 enum DaySection {
-  /// Its time has gone and nothing was done about it.
-  overdue,
+  /// Already happened: a stay, a finished event, or one whose time has gone.
+  earlier,
 
   /// The next thing that has not happened yet. At most one.
   nextUp,
 
   /// Still to come.
   later,
-
-  /// Dealt with, one way or the other. Collapsed by default.
-  done,
 }
 
-/// A day, sorted into the sections the Today screen draws.
+/// A day in the order it happened, sorted into the parts the Today screen
+/// draws.
 ///
-/// Pure, so the rules about what counts as overdue — and what the progress
-/// ring divides by — can be tested without building a widget.
+/// One line, not four piles. Everything the day contains keeps its place in
+/// time — a finished event stays where it was done rather than being swept
+/// into a heap at the bottom, and a stay sits between the events either side
+/// of it. What was *planned* is counted separately from what merely happened,
+/// which is the one distinction the progress ring cares about.
+///
+/// Pure, so the rules about what counts as overdue — and what the ring divides
+/// by — can be tested without building a widget.
 class DaySummary {
   const DaySummary({
-    required this.overdue,
+    required this.earlier,
     required this.nextUp,
     required this.later,
-    required this.done,
+    required this.plans,
+    required this.visits,
     required this.isToday,
   });
 
@@ -34,70 +39,91 @@ class DaySummary {
     required DateTime now,
     required bool isToday,
   }) {
-    final overdue = <Occurrence>[];
+    final earlier = <Occurrence>[];
     final later = <Occurrence>[];
-    final done = <Occurrence>[];
+    final plans = <Occurrence>[];
+    final visits = <Occurrence>[];
     Occurrence? nextUp;
 
     for (final occurrence in occurrences) {
-      if (!occurrence.isPending) {
-        done.add(occurrence);
-        continue;
-      }
-      // On any day but today there is no "now" to be on the wrong side of, so
-      // everything pending is simply still to come.
-      if (!isToday) {
-        later.add(occurrence);
-        continue;
-      }
-      if (occurrence.isPast(now)) {
-        overdue.add(occurrence);
-      } else if (nextUp == null) {
-        nextUp = occurrence;
+      // Somewhere the device went is a record of the day, not a plan for it.
+      // It is never counted, and — unlike an event — never hidden: there is
+      // nothing to tick off and nothing to tidy away.
+      if (occurrence.isVisitRecord) {
+        visits.add(occurrence);
       } else {
-        later.add(occurrence);
+        plans.add(occurrence);
       }
+
+      // A stay has, by definition, already happened.
+      if (occurrence.isVisitRecord || occurrence.isPast(now)) {
+        earlier.add(occurrence);
+        continue;
+      }
+      // The first thing still to come is drawn as a card of its own, and only
+      // on today: on another day there is no "next" to count down to.
+      if (isToday && nextUp == null && occurrence.isPending) {
+        nextUp = occurrence;
+        continue;
+      }
+      later.add(occurrence);
     }
 
     return DaySummary(
-      overdue: overdue,
+      earlier: earlier,
       nextUp: nextUp,
       later: later,
-      done: done,
+      plans: plans,
+      visits: visits,
       isToday: isToday,
     );
   }
 
-  final List<Occurrence> overdue;
+  /// The part of the day that has already happened, in the order it did.
+  ///
+  /// Events and stays together: a finished event, one whose time went by
+  /// without being touched, and the places the device was — the day as it
+  /// turned out, rather than three separate accounts of it.
+  final List<Occurrence> earlier;
+
   final Occurrence? nextUp;
+
+  /// Still to come, in order. [nextUp] is drawn separately and left out.
   final List<Occurrence> later;
-  final List<Occurrence> done;
+
+  /// Everything on the day that was a plan, whatever became of it.
+  ///
+  /// The ring answers "how much of what I meant to do did I do", so a place
+  /// the phone noticed you were at is not in here — counting it would inflate
+  /// both halves of the fraction and quietly make every day look better.
+  final List<Occurrence> plans;
+
+  /// The stays filed onto this day, in the order they happened.
+  final List<Occurrence> visits;
+
   final bool isToday;
 
-  bool get isEmpty =>
-      overdue.isEmpty && nextUp == null && later.isEmpty && done.isEmpty;
-
-  /// Everything on the day that was a plan.
+  /// Plans whose time has gone with nothing done about them.
   ///
-  /// Rows the app wrote to record a visit are not counted. The ring answers
-  /// "how much of what I meant to do did I do", and a place the phone noticed
-  /// you were at was never on that list — counting it would inflate both
-  /// halves of the fraction and quietly make every day look better.
-  int get total => overdue.length + (nextUp == null ? 0 : 1) + later.length +
-      done.where((o) => !o.isVisitRecord).length;
+  /// Only today: on another day there is no "now" to be on the wrong side of.
+  List<Occurrence> get overdue => isToday
+      ? earlier.where((o) => o.isPending && !o.isVisitRecord).toList()
+      : const [];
+
+  /// Plans that have been ticked or skipped — the ones the day list can be
+  /// asked to hide, and the only ones.
+  List<Occurrence> get done => plans.where((o) => !o.isPending).toList();
+
+  bool get isEmpty => earlier.isEmpty && nextUp == null && later.isEmpty;
+
+  int get total => plans.length;
 
   /// How many were actually done, as opposed to consciously skipped.
-  int get doneCount => done
-      .where((o) => o.status == CompletionStatus.done && !o.isVisitRecord)
-      .length;
+  int get doneCount =>
+      plans.where((o) => o.status == CompletionStatus.done).length;
 
-  int get skippedCount => done
-      .where((o) => o.status == CompletionStatus.skipped && !o.isVisitRecord)
-      .length;
-
-  /// The visits filed onto this day. Shown, never counted.
-  List<Occurrence> get visitRecords =>
-      done.where((o) => o.isVisitRecord).toList();
+  int get skippedCount =>
+      plans.where((o) => o.status == CompletionStatus.skipped).length;
 
   /// The denominator of "3 of 6 done".
   ///
@@ -117,10 +143,11 @@ class DaySummary {
     return '$doneCount of $expected done';
   }
 
-  /// Whether to draw the now line, which sits directly below Overdue.
+  /// Whether to draw the now line, which sits between what has happened and
+  /// what has not.
   ///
-  /// Only on today, and only when something is actually behind it. With
-  /// nothing overdue the boundary is the top of the list, and a line there
+  /// Only on today, and only when something is actually behind it. With an
+  /// empty morning the boundary is the top of the list, and a line there
   /// separates the day from nothing at all.
-  bool get showsNowDivider => isToday && overdue.isNotEmpty;
+  bool get showsNowDivider => isToday && earlier.isNotEmpty;
 }

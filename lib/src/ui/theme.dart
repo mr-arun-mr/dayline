@@ -13,6 +13,13 @@ abstract final class DaylineTheme {
 
   static const double gutter = 20;
 
+  /// The day reads down a straight column of clock times, with the timeline's
+  /// thread beside it. Every row on the Today screen lines up on these, so a
+  /// dot, a divider and a stay's thread all sit on the same spine.
+  static const double timeColumnWidth = 52;
+  static const double railGap = 14;
+  static const double railWidth = 10;
+
   static const _accent = Color(0xFF3B82F6);
 
   static final light = _build(

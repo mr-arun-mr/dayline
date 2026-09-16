@@ -84,7 +84,8 @@ void main() {
     await pumpApp(tester, now: DateTime(2026, 9, 11, 8, 42));
 
     expect(find.text('Today'), findsOneWidget);
-    expect(find.text('OVERDUE  1'), findsOneWidget);
+    expect(find.text('EARLIER TODAY'), findsOneWidget);
+    expect(find.textContaining('Overdue'), findsOneWidget);
     expect(find.text('NEXT UP'), findsOneWidget);
     expect(find.text('LATER TODAY'), findsOneWidget);
     expect(find.byType(NowDivider), findsOneWidget);
@@ -124,8 +125,9 @@ void main() {
     await pumpApp(tester, now: DateTime(2026, 9, 11, 23, 30));
 
     expect(find.byType(NextUpCard), findsNothing);
-    expect(find.text('OVERDUE  2'), findsOneWidget);
     expect(find.byType(OccurrenceTile), findsNWidgets(2));
+    expect(find.textContaining('Overdue'), findsNWidgets(2),
+        reason: 'said on each row, in its own place in the day');
 
     await close(tester);
   });

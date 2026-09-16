@@ -73,7 +73,9 @@ Future<OccurrenceAction?> showOccurrenceSheet(
                   subtitle: 'Let this one go without it counting against you',
                   action: OccurrenceAction.markSkipped,
                 ),
-              ] else
+              ] else if (!occurrence.isVisitRecord)
+                // A stay is not a tick to undo. The phone was there; saying
+                // otherwise is not something the app should offer.
                 _Action(
                   icon: Icons.undo,
                   label: occurrence.isDone ? 'Not done after all' : 'Un-skip',

@@ -25,7 +25,7 @@ class NowDivider extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 52,
+            width: DaylineTheme.timeColumnWidth,
             child: Text(
               label,
               textAlign: TextAlign.right,
@@ -37,10 +37,10 @@ class NowDivider extends StatelessWidget {
                   .merge(monospacedFigures),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: DaylineTheme.railGap),
           Container(
-            width: 8,
-            height: 8,
+            width: DaylineTheme.railWidth,
+            height: DaylineTheme.railWidth,
             decoration: BoxDecoration(
               color: scheme.primary,
               shape: BoxShape.circle,

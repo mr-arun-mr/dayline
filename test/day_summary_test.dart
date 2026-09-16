@@ -33,12 +33,35 @@ void main() {
     );
   }
 
+  /// A row the app wrote itself to record a stay, rather than one the user
+  /// planned.
+  Occurrence stay(String place, int arrivedAt) {
+    final id = nextId++;
+    return Occurrence(
+      event: Event(
+        id: id,
+        title: place,
+        colorValue: 0xFF10B981,
+        rule: EventRule(
+          recurrence: Recurrence.once,
+          timeOfDay: arrivedAt,
+          startDate: date,
+        ),
+        fromVisitId: id,
+      ),
+      date: date,
+      effectiveTimeOfDay: arrivedAt,
+      status: CompletionStatus.done,
+      isAutomatic: true,
+    );
+  }
+
   setUp(() => nextId = 1);
 
   DaySummary summarise(List<Occurrence> list, {bool isToday = true}) =>
       DaySummary.from(occurrences: list, now: now, isToday: isToday);
 
-  group('sectioning today', () {
+  group('the day in one line', () {
     test('splits around now, with exactly one next up', () {
       final summary = summarise([
         occurrence('Gym', 7 * 60),
@@ -48,14 +71,16 @@ void main() {
         occurrence('Medication', 21 * 60),
       ]);
 
-      expect(summary.overdue.map((o) => o.event.title),
+      expect(summary.earlier.map((o) => o.event.title),
           ['Gym', 'Water plants']);
       expect(summary.nextUp?.event.title, 'Standup');
       expect(summary.later.map((o) => o.event.title), ['Physio', 'Medication']);
       expect(summary.done, isEmpty);
     });
 
-    test('anything dealt with leaves the timeline entirely', () {
+    test('anything dealt with keeps its place in the day', () {
+      // The whole point: a finished thing is still part of the day, in the
+      // order it happened, rather than swept into a pile at the bottom.
       final summary = summarise([
         occurrence('Gym', 7 * 60, status: CompletionStatus.done),
         occurrence('Water plants', 8 * 60),
@@ -63,10 +88,23 @@ void main() {
         occurrence('Physio', 13 * 60),
       ]);
 
-      expect(summary.overdue.map((o) => o.event.title), ['Water plants']);
+      expect(summary.earlier.map((o) => o.event.title),
+          ['Gym', 'Water plants']);
+      expect(summary.later.map((o) => o.event.title), ['Standup']);
       expect(summary.nextUp?.event.title, 'Physio',
           reason: 'a skipped occurrence cannot be next up');
-      expect(summary.done.map((o) => o.event.title), ['Gym', 'Standup']);
+      expect(summary.done.map((o) => o.event.title), ['Gym', 'Standup'],
+          reason: 'these are the ones the day list can be asked to hide');
+    });
+
+    test('only what is still pending counts as overdue', () {
+      final summary = summarise([
+        occurrence('Gym', 7 * 60, status: CompletionStatus.done),
+        occurrence('Water plants', 8 * 60),
+      ]);
+
+      expect(summary.earlier, hasLength(2));
+      expect(summary.overdue.map((o) => o.event.title), ['Water plants']);
     });
 
     test('a finished day has no next up and no overdue', () {
@@ -91,7 +129,33 @@ void main() {
     });
   });
 
-  group('sectioning any other day', () {
+  group('somewhere you went', () {
+    test('is on the day, but is not a plan and is never hidden', () {
+      final summary = summarise([
+        occurrence('Gym', 7 * 60, status: CompletionStatus.done),
+        stay('Office', 9 * 60),
+      ]);
+
+      expect(summary.visits.map((o) => o.event.title), ['Office']);
+      expect(summary.earlier.map((o) => o.event.title), ['Gym', 'Office'],
+          reason: 'in the order the day happened');
+      expect(summary.done.map((o) => o.event.title), ['Gym'],
+          reason: 'a stay is not something that was ticked off');
+      expect(summary.total, 1, reason: 'the ring counts plans only');
+    });
+
+    test('has already happened, whatever the clock says', () {
+      // Written at the time of arrival, so a stay is never "still to come"
+      // and never next up.
+      final summary = summarise([stay('Office', 21 * 60)]);
+
+      expect(summary.earlier.map((o) => o.event.title), ['Office']);
+      expect(summary.later, isEmpty);
+      expect(summary.nextUp, isNull);
+    });
+  });
+
+  group('any other day', () {
     test('nothing is overdue, because there is no now to be late against', () {
       final summary = summarise([
         occurrence('Gym', 7 * 60),
@@ -105,7 +169,7 @@ void main() {
     });
 
     test('the now line needs something behind it', () {
-      // Nothing overdue means the boundary is the top of the list.
+      // With nothing behind it the line is the top of the list.
       final summary = summarise([occurrence('Physio', 13 * 60)]);
       expect(summary.showsNowDivider, isFalse);
 
@@ -122,7 +186,8 @@ void main() {
       ], isToday: false);
 
       expect(summary.done, hasLength(1));
-      expect(summary.later, isEmpty);
+      expect(summary.later, hasLength(1),
+          reason: 'still to come on a day that has not arrived');
     });
   });
 
