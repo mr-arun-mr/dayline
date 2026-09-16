@@ -4,6 +4,7 @@ import '../../model/calendar_date.dart';
 import '../../model/place.dart';
 import '../../model/place_stats.dart';
 import '../../model/rule_description.dart';
+import '../day_rail.dart';
 import '../theme.dart';
 import 'dashboard_screen.dart';
 
@@ -126,11 +127,12 @@ class _Stay extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Rail(
+            DayRail.span(
               colour: colour,
-              isFirst: isFirst,
-              isLast: isLast,
               isOpen: visit.isOpen,
+              linkedAbove: !isFirst,
+              linkedBelow: !isLast,
+              bottomInset: 20,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -179,73 +181,4 @@ class _Stay extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The line down the left: a filled dot where the stay began, a hollow one
-/// where it ended, and a thread joining one stay to the next.
-class _Rail extends StatelessWidget {
-  const _Rail({
-    required this.colour,
-    required this.isFirst,
-    required this.isLast,
-    required this.isOpen,
-  });
-
-  final Color colour;
-  final bool isFirst;
-  final bool isLast;
-  final bool isOpen;
-
-  static const _width = 14.0;
-  static const _dot = 10.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final thread = Theme.of(context).colorScheme.outlineVariant;
-
-    return SizedBox(
-      width: _width,
-      child: Column(
-        children: [
-          // The gap above the first dot is the top of the day, not a journey
-          // from somewhere, so nothing is drawn there.
-          _Thread(colour: isFirst ? Colors.transparent : thread, height: 6),
-          _Dot(colour: colour, filled: true),
-          Expanded(child: _Thread(colour: colour.withValues(alpha: 0.35))),
-          // An open stay has no end to mark: the rail simply stops.
-          if (!isOpen) _Dot(colour: colour, filled: false),
-          _Thread(colour: isLast ? Colors.transparent : thread, height: 14),
-        ],
-      ),
-    );
-  }
-}
-
-class _Thread extends StatelessWidget {
-  const _Thread({required this.colour, this.height});
-
-  final Color colour;
-  final double? height;
-
-  @override
-  Widget build(BuildContext context) =>
-      Container(width: 2, height: height, color: colour);
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot({required this.colour, required this.filled});
-
-  final Color colour;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: _Rail._dot,
-    height: _Rail._dot,
-    decoration: BoxDecoration(
-      color: filled ? colour : Theme.of(context).colorScheme.surface,
-      shape: BoxShape.circle,
-      border: Border.all(color: colour, width: 2),
-    ),
-  );
 }

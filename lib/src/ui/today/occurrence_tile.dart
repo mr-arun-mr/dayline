@@ -2,17 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../../model/occurrence.dart';
 import '../../model/rule_description.dart';
+import '../day_rail.dart';
 import '../event_colors.dart';
 import '../theme.dart';
 
-/// One event on one day: time, colour, title.
+/// One event on one day: time, marker, title.
 ///
 /// The row is built around the time column, because reading down a straight
-/// column of clock times is what makes the day scannable at a glance.
+/// column of clock times is what makes the day scannable at a glance — and
+/// beside it the day's thread, which every row hangs from. A done event keeps
+/// its place on that thread rather than being swept into a pile at the
+/// bottom: it happened, and where it happened in the day is part of the day.
 class OccurrenceTile extends StatelessWidget {
   const OccurrenceTile({
     required this.occurrence,
     required this.isPast,
+    this.linkedAbove = true,
+    this.linkedBelow = true,
     this.onTap,
     this.onLongPress,
     super.key,
@@ -22,6 +28,10 @@ class OccurrenceTile extends StatelessWidget {
 
   /// Whether its time has already gone by. Dims the row rather than hiding it.
   final bool isPast;
+
+  /// Whether the day's thread carries on to the row above or below.
+  final bool linkedAbove;
+  final bool linkedBelow;
 
   /// Marking done and back again.
   final VoidCallback? onTap;
@@ -34,7 +44,12 @@ class OccurrenceTile extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final colour = EventColors.of(occurrence.event.colorValue);
-    final dim = isPast ? 0.45 : 1.0;
+    // Its time has gone and nothing has been done about it. Not dimmed and
+    // not tucked away: it is the one thing on the day still asking for
+    // something.
+    final overdue = isPast && occurrence.isPending;
+    // Dealt with, so it can recede — but it keeps its place in the day.
+    final dim = occurrence.isPending ? 1.0 : 0.45;
 
     return InkWell(
       onTap: onTap,
@@ -43,68 +58,74 @@ class OccurrenceTile extends StatelessWidget {
         constraints: const BoxConstraints(
           minHeight: DaylineTheme.rowMinHeight,
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: DaylineTheme.gutter,
-            vertical: 10,
-          ),
+        // The row's own padding is on its contents rather than around them, so
+        // that the thread runs the full height and one row's line meets the
+        // next instead of stopping short of it.
+        child: IntrinsicHeight(
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Opacity(
-                opacity: dim,
-                child: _TimeColumn(occurrence: occurrence),
-              ),
-              const SizedBox(width: 14),
-              Opacity(
-                opacity: dim,
-                child: Container(
-                  width: 4,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: colour,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+              const SizedBox(width: DaylineTheme.gutter),
+              Center(
+                child: Opacity(
+                  opacity: dim,
+                  child: _TimeColumn(occurrence: occurrence),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: DaylineTheme.railGap),
+              DayRail.moment(
+                colour: colour,
+                // Filled once it has been dealt with, hollow while it is still
+                // waiting to be.
+                filled: !occurrence.isPending,
+                linkedAbove: linkedAbove,
+                linkedBelow: linkedBelow,
+              ),
+              const SizedBox(width: DaylineTheme.railGap),
               Expanded(
                 child: Opacity(
                   opacity: dim,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        occurrence.event.title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          decoration: occurrence.isPending
-                              ? null
-                              : TextDecoration.lineThrough,
-                          color: occurrence.isPending
-                              ? null
-                              : scheme.onSurfaceVariant,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (_subtitle(occurrence) case final subtitle?) ...[
-                        const SizedBox(height: 2),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         Text(
-                          subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
+                          occurrence.event.title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            decoration: occurrence.isPending
+                                ? null
+                                : TextDecoration.lineThrough,
+                            color: occurrence.isPending
+                                ? null
+                                : scheme.onSurfaceVariant,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (_subtitle(occurrence, overdue)
+                            case final subtitle?) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: overdue
+                                  ? scheme.error
+                                  : scheme.onSurfaceVariant,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusMark(occurrence: occurrence),
+              Center(child: _StatusMark(occurrence: occurrence)),
+              const SizedBox(width: DaylineTheme.gutter),
             ],
           ),
         ),
@@ -112,8 +133,12 @@ class OccurrenceTile extends StatelessWidget {
     );
   }
 
-  static String? _subtitle(Occurrence occurrence) {
+  static String? _subtitle(Occurrence occurrence, bool overdue) {
     final parts = <String>[
+      // Said on the row rather than by a section of its own, now that the day
+      // is one line: the row is in its place in the day, and this is what is
+      // wrong with it.
+      if (overdue) 'Overdue',
       if (occurrence.isSkipped) 'Skipped',
       // Why this row exists at all, for one the user did not write.
       if (occurrence.isVisitRecord) 'Visited',
@@ -176,7 +201,7 @@ class _TimeColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SizedBox(
-      width: 52,
+      width: DaylineTheme.timeColumnWidth,
       child: Text(
         formatWallClock(occurrence.effectiveTimeOfDay),
         textAlign: TextAlign.right,

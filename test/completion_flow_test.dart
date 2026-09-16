@@ -65,13 +65,13 @@ void main() {
     await db.close();
   }
 
-  testWidgets('tapping a row marks it done and moves it out of the timeline',
+  testWidgets('tapping a row marks it done and it keeps its place in the day',
       (tester) async {
     final gym = await add('Gym', 7 * 60);
     await add('Standup', 9 * 60 + 30);
     await pumpApp(tester);
 
-    expect(find.text('OVERDUE  1'), findsOneWidget);
+    expect(find.textContaining('Overdue'), findsOneWidget);
 
     await tester.tap(find.byType(OccurrenceTile).first);
     await settle(tester);
@@ -80,9 +80,11 @@ void main() {
     expect(rows.single.eventId, gym);
     expect(rows.single.status, CompletionStatus.done);
 
-    // Gone from Overdue, folded into Done.
-    expect(find.text('OVERDUE  1'), findsNothing);
-    expect(find.text('DONE  1'), findsOneWidget);
+    // No longer asking for anything, but still where it happened: the day is
+    // one line, and a finished thing is part of it.
+    expect(find.textContaining('Overdue'), findsNothing);
+    expect(find.text('Gym'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Hide done'), findsOneWidget);
 
     await close(tester);
   });
@@ -113,19 +115,17 @@ void main() {
     await settle(tester);
     expect(await db.select(db.completions).get(), hasLength(1));
 
-    // Open the Done section and tap it again.
-    await tester.tap(find.widgetWithText(TextButton, 'Show'));
-    await settle(tester);
+    // Still there to be tapped again, in the same place.
     await tester.tap(find.byType(OccurrenceTile).first);
     await settle(tester);
 
     expect(await db.select(db.completions).get(), isEmpty);
-    expect(find.text('OVERDUE  1'), findsOneWidget);
+    expect(find.textContaining('Overdue'), findsOneWidget);
 
     await close(tester);
   });
 
-  testWidgets('the Done section is folded away until asked for',
+  testWidgets('a done event is shown in its place, and can be folded away',
       (tester) async {
     final gym = await add('Gym', 7 * 60);
     await add('Standup', 9 * 60 + 30);
@@ -134,10 +134,15 @@ void main() {
 
     await pumpApp(tester);
 
-    expect(find.text('DONE  1'), findsOneWidget);
-    expect(find.text('Gym'), findsNothing, reason: 'collapsed by default');
+    expect(find.text('Gym'), findsOneWidget,
+        reason: 'done, and still where the day put it');
 
-    await tester.tap(find.widgetWithText(TextButton, 'Show'));
+    await tester.tap(find.widgetWithText(TextButton, 'Hide done'));
+    await settle(tester);
+    expect(find.text('Gym'), findsNothing);
+
+    // And the way back is still on screen.
+    await tester.tap(find.widgetWithText(TextButton, 'Show done'));
     await settle(tester);
     expect(find.text('Gym'), findsOneWidget);
 
@@ -158,8 +163,6 @@ void main() {
       );
 
       await pumpApp(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Show'));
-      await settle(tester);
 
       expect(find.textContaining('Done on arrival'), findsOneWidget);
 
@@ -172,8 +175,6 @@ void main() {
           eventId: gym, date: today, status: CompletionStatus.done);
 
       await pumpApp(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Show'));
-      await settle(tester);
 
       expect(find.textContaining('Done on arrival'), findsNothing);
 
@@ -191,13 +192,11 @@ void main() {
       );
 
       await pumpApp(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Show'));
-      await settle(tester);
       await tester.tap(find.byType(OccurrenceTile).first);
       await settle(tester);
 
       expect(await db.select(db.completions).get(), isEmpty);
-      expect(find.text('OVERDUE  1'), findsOneWidget);
+      expect(find.textContaining('Overdue'), findsOneWidget);
 
       await close(tester);
     });
@@ -311,12 +310,46 @@ void main() {
       );
 
       await pumpApp(tester);
-      await tester.tap(find.widgetWithText(TextButton, 'Show'));
-      await settle(tester);
 
       expect(find.textContaining('Visited'), findsOneWidget);
       // Not also "Done on arrival" — the row is the arrival.
       expect(find.textContaining('Done on arrival'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('a stay is not folded away with what was done',
+        (tester) async {
+      // Hiding is for events the user has dealt with. Somewhere the phone
+      // recorded you at is the day's own record, and it stays put.
+      final gym = await addPlace('Gym');
+      final standup = await add('Standup', 8 * 60);
+      await db.eventsDao.setCompletion(
+          eventId: standup, date: today, status: CompletionStatus.done);
+
+      final visitId =
+          await db.placesDao.recordArrival(gym, DateTime(2026, 9, 11, 7, 4));
+      final place = (await db.placesDao.placeById(gym))!;
+      await db.eventsDao.recordVisitAsEvent(
+        place: Place(
+          id: place.id,
+          name: place.name,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          radiusMeters: place.radiusMeters,
+          colorValue: place.colorValue,
+          addVisitsToDay: true,
+        ),
+        visitId: visitId,
+        at: DateTime(2026, 9, 11, 7, 4),
+      );
+
+      await pumpApp(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Hide done'));
+      await settle(tester);
+
+      expect(find.text('Standup'), findsNothing);
+      expect(find.textContaining('Visited'), findsOneWidget);
 
       await close(tester);
     });
@@ -377,8 +410,6 @@ void main() {
           eventId: gym, date: today, status: CompletionStatus.done);
       await pumpApp(tester);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Show'));
-      await settle(tester);
       await tester.longPress(find.byType(OccurrenceTile).first);
       await settle(tester);
 
@@ -434,7 +465,7 @@ void main() {
       await pumpApp(tester);
 
       // Moved to the evening, so it is no longer overdue at 08:42.
-      expect(find.text('OVERDUE  1'), findsNothing);
+      expect(find.textContaining('Overdue'), findsNothing);
       expect(find.text('20:00'), findsOneWidget);
       expect(find.textContaining('Moved from 07:00'), findsOneWidget);
 
