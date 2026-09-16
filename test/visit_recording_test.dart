@@ -1,6 +1,7 @@
 import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/location/geofence_service.dart';
 import 'package:dayline/src/model/place.dart';
+import 'package:dayline/src/model/place_stats.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:native_geofence/native_geofence.dart' show GeofenceEvent;
@@ -34,6 +35,15 @@ void main() {
         event: kind,
         at: at,
       );
+
+  Future<int> addPlace(String name) =>
+      db.placesDao.insertPlace(PlacesCompanion.insert(
+        name: name,
+        latitude: 51.51,
+        longitude: -0.13,
+        colorValue: 0xFF64748B,
+        kind: PlaceKind.other,
+      ));
 
   DateTime at(int hour, [int minute = 0]) =>
       DateTime(2026, 9, 11, hour, minute);
@@ -102,14 +112,11 @@ void main() {
     expect(await db.placesDao.visitsForPlace(gym), isEmpty);
   });
 
-  test('two places are tracked independently', () async {
-    final office = await db.placesDao.insertPlace(PlacesCompanion.insert(
-      name: 'Office',
-      latitude: 51.51,
-      longitude: -0.13,
-      colorValue: 0xFF64748B,
-      kind: PlaceKind.work,
-    ));
+  test('a late exit still lands on the stay it belongs to', () async {
+    // The gym's exit arrives after the office arrival that already had to
+    // guess the gym stay was over. The OS knows when the device left; the
+    // guess was only ever "no later than this", so the real time wins.
+    final office = await addPlace('Office');
 
     await event(GeofenceEvent.enter, at(7), placeId: gym);
     await event(GeofenceEvent.enter, at(9), placeId: office);
@@ -117,6 +124,104 @@ void main() {
 
     expect((await db.placesDao.visitsForPlace(gym)).single.departedAt, at(8));
     expect((await db.placesDao.visitsForPlace(office)).single.isOpen, isTrue);
+  });
+
+  group('one place at a time', () {
+    // Both platforms drop exits, and the one they drop is usually the exit for
+    // the place just left: the crossing they are busy reporting is the
+    // arrival. A device is only ever in one place, so an arrival is also news
+    // about everywhere else.
+
+    test('arriving elsewhere ends a stay left open', () async {
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(7), placeId: gym);
+      await event(GeofenceEvent.enter, at(9), placeId: office);
+
+      final stay = (await db.placesDao.visitsForPlace(gym)).single;
+      expect(stay.departedAt, at(9), reason: 'no exit ever came for the gym');
+    });
+
+    test('coming back is a stay of its own', () async {
+      // Home, office, home. Left alone, the morning at home stays open, the
+      // evening arrival is folded into it, and a day with two stays at home
+      // and a day out is one entry saying "home".
+      final home = await addPlace('Home');
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(7), placeId: home);
+      await event(GeofenceEvent.enter, at(9), placeId: office);
+      await event(GeofenceEvent.enter, at(18), placeId: home);
+
+      final athome = await db.placesDao.visitsForPlace(home);
+      expect(athome, hasLength(2));
+      expect(athome.first.arrivedAt, at(7));
+      expect(athome.first.departedAt, at(9));
+      expect(athome.last.arrivedAt, at(18));
+      expect(athome.last.isOpen, isTrue);
+
+      final atwork = (await db.placesDao.visitsForPlace(office)).single;
+      expect(atwork.departedAt, at(18), reason: 'being home ended the office');
+    });
+
+    test('the day adds up to the day, not more', () async {
+      // Overlapping stays would have the device at home and at the office at
+      // once, and the totals would say eleven hours in an eight-hour day.
+      final home = await addPlace('Home');
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(7), placeId: home);
+      await event(GeofenceEvent.enter, at(9), placeId: office);
+      await event(GeofenceEvent.enter, at(18), placeId: home);
+
+      final totals = timePerPlace(
+        await db.placesDao.visitsBetween(at(0), at(23, 59)),
+        from: at(0),
+        to: at(23, 59),
+        now: at(20),
+      );
+      expect(totals[home], const Duration(hours: 4));
+      expect(totals[office], const Duration(hours: 9));
+    });
+
+    test('crossings reported together do not close each other', () async {
+      // Two circles that overlap — a gym inside the office campus — are
+      // entered in one callback. Neither is news about the other.
+      final office = await addPlace('Office');
+
+      await applyGeofenceEvent(
+        db: db,
+        placeIds: [gym, office],
+        event: GeofenceEvent.enter,
+        at: at(9),
+      );
+
+      expect((await db.placesDao.visitsForPlace(gym)).single.isOpen, isTrue);
+      expect((await db.placesDao.visitsForPlace(office)).single.isOpen, isTrue);
+    });
+
+    test('an arrival older than the stay leaves it alone', () async {
+      // Crossings can be delivered out of order. An arrival from before a
+      // stay even began says nothing about when that stay ended, so it is
+      // left open rather than closed at a time it cannot have ended.
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(9), placeId: gym);
+      await event(GeofenceEvent.enter, at(8), placeId: office);
+
+      expect((await db.placesDao.visitsForPlace(gym)).single.isOpen, isTrue);
+    });
+
+    test('an exit for a stay already ended changes nothing', () async {
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(7), placeId: gym);
+      await event(GeofenceEvent.exit, at(8), placeId: gym);
+      await event(GeofenceEvent.enter, at(9), placeId: office);
+      await event(GeofenceEvent.exit, at(8, 30), placeId: gym);
+
+      expect((await db.placesDao.visitsForPlace(gym)).single.departedAt, at(8));
+    });
   });
 
   test('deleting a place takes its visits with it', () async {

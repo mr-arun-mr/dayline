@@ -168,6 +168,17 @@ Future<List<Occurrence>> applyGeofenceEvent({
 }) async {
   final touched = <Occurrence>[];
 
+  // Turning up somewhere ends whatever stay was still open somewhere else.
+  // Done once for the whole batch rather than per place, so two overlapping
+  // circles crossed together do not close each other; and done before any
+  // arrival is recorded, so that coming back to a place finds nothing of its
+  // own still open and starts a stay of its own.
+  if (event != GeofenceEvent.exit) {
+    for (final left in await db.placesDao.closeStaysAwayFrom(placeIds, at)) {
+      await db.eventsDao.closeVisitEvent(left);
+    }
+  }
+
   for (final placeId in placeIds) {
     switch (event) {
       case GeofenceEvent.enter:

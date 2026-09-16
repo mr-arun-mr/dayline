@@ -449,6 +449,25 @@ arrival recorded means one of two things — you did not go, or the phone was
 never watching — and the row cannot tell them apart. Guessing would be the app
 inventing a fact about your day.
 
+### One place at a time
+
+Both platforms drop exits, and the one they drop is usually the exit for the
+place you just left — the crossing they are busy reporting is the arrival
+somewhere else. So an arrival is also treated as news about everywhere else:
+turning up at the office ends whatever stay was still open at home, at the
+time you turned up.
+
+Without that, the morning at home never ends. The day at the office is
+recorded *inside* it, coming home again finds that stay still open and is
+folded into it, the totals count the same hours twice, and a day that went
+home → office → home is left as a single entry saying "home". When the real
+exit does arrive late, it is more accurate than the arrival that had to stand
+in for it, and it replaces it.
+
+Crossings the OS reports together are exempt from each other, so two
+overlapping circles — a gym inside the office campus — do not close one
+another.
+
 ### Visits you never planned
 
 A place can also put its own stays onto the day, under **Add visits to my day**
@@ -476,8 +495,24 @@ The dashboard answers four questions:
   window rather than counted whole.
 - **Did you go?** — for any routine linked to a place, how many of its past
   occurrences you were actually there for, within a two-hour grace window.
-- **Today** — a timeline of arrivals and departures, with an open visit shown
-  as still running.
+- **Today** — one line per stay, in the order they happened, each spelling out
+  when you arrived and when you left:
+
+  ```
+  ● Brindley Point                 1h 30m
+  │ Arrived 07:00 · left 08:30
+  ○
+  ● Office                         8h 30m
+  │ Arrived 09:00 · left 17:30
+  ○
+  ● Brindley Point             now · 2h
+    Arrived 18:00 · still there
+  ```
+
+  A stay, not a place: going out and coming back is two entries at that place,
+  not one merged into the other. A stay that ran over from the night before
+  says which day it began, and one you are still on says so instead of
+  inventing an end.
 - **Week by week** — six weeks per place, Monday to Monday, so a drift in
   either direction is visible.
 
