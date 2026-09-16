@@ -59,9 +59,23 @@ class Place {
   /// was planned.
   final bool addVisitsToDay;
 
-  /// The smallest radius the OS will reliably honour. Below roughly this,
-  /// both platforms produce arrivals and departures that never happened.
-  static const minimumRadiusMeters = 100.0;
+  /// The smallest circle either platform will take at all.
+  ///
+  /// Both vendors say a hundred metres, and they are right about reliability:
+  /// region monitoring runs off cell and Wi-Fi positioning to stay out of the
+  /// battery, and that is often no better than fifty metres, so a tighter
+  /// circle can be crossed without the phone noticing — or crossed twice while
+  /// the device sits still on a table.
+  ///
+  /// It is allowed anyway, below the default and behind a warning, because
+  /// there is one thing only a tighter circle can do: keep two places apart.
+  /// A shop and the gym next door are both inside a hundred metres of each
+  /// other, and no amount of cleverness afterwards can work out which of them
+  /// the user meant.
+  static const minimumRadiusMeters = 50.0;
+
+  /// What the OS is happiest with, and what a new place gets.
+  static const reliableRadiusMeters = 100.0;
   static const defaultRadiusMeters = 150.0;
   static const maximumRadiusMeters = 2000.0;
 

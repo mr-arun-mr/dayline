@@ -102,8 +102,9 @@ class GeofenceService {
               latitude: place.latitude,
               longitude: place.longitude,
             ),
-            // Clamped: below about a hundred metres both platforms report
-            // arrivals and departures that never happened.
+            // Clamped to what the platforms will take. A circle under a
+            // hundred metres is theirs to honour badly — the editor says so
+            // when one is drawn — but the floor is still a floor.
             radiusMeters: place.radiusMeters
                 .clamp(Place.minimumRadiusMeters, Place.maximumRadiusMeters),
             triggers: const {GeofenceEvent.enter, GeofenceEvent.exit},

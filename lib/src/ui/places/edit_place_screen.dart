@@ -389,6 +389,8 @@ class _RadiusPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tight = radius < Place.reliableRadiusMeters;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         DaylineTheme.gutter,
@@ -417,16 +419,28 @@ class _RadiusPicker extends StatelessWidget {
             value: radius,
             min: Place.minimumRadiusMeters,
             max: Place.maximumRadiusMeters,
-            divisions: 38,
+            // 50 m a step, from the tightest circle the phone will take to the
+            // widest worth drawing.
+            divisions: 39,
             onChanged: onChanged,
           ),
           Padding(
             padding: const EdgeInsets.only(left: 40, bottom: 8),
             child: Text(
-              'Below about 100 m the phone reports arrivals that never '
-              'happened. Bigger is steadier but catches the street outside.',
+              tight
+                  // Said plainly, because this is the trade and the user is
+                  // the only one who can make it: a tighter circle is the only
+                  // way to keep two places apart, and it is also the one the
+                  // phone is worst at noticing.
+                  ? 'Under 100 m the phone may miss arrivals altogether, or '
+                      'report them twice while it sits on a table. Worth it '
+                      'only to keep this place apart from one next to it.'
+                  : 'Bigger is steadier but catches the street outside. '
+                      'Around 100 m is what both phones are happiest with.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: tight
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.onSurfaceVariant,
                 height: 1.35,
               ),
             ),
@@ -542,6 +556,20 @@ class _OverlapNote extends StatelessWidget {
   final Place other;
   final double metres;
 
+  /// What would actually separate them, or that nothing would.
+  ///
+  /// Half the distance between the centres is the widest each circle can be
+  /// and still not touch — and below the floor that is not a radius the phone
+  /// will watch, which is worth saying rather than letting the user chase a
+  /// setting that cannot work.
+  String get _advice {
+    final apart = metres / 2;
+    return apart >= Place.minimumRadiusMeters
+        ? 'Under ${apart.floor()} m each they would be separate circles.'
+        : 'Nothing the phone will watch is tight enough to separate them, so '
+            'keep whichever one you meant.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -564,8 +592,7 @@ class _OverlapNote extends StatelessWidget {
               '${other.name} is ${metres.round()} m away, so the two circles '
               'overlap. The phone cannot tell them apart: arriving at either '
               'reports both, and the stay is recorded at whichever circle is '
-              'smaller. Shrink one, or move it, if they are meant to be '
-              'separate places.',
+              'smaller. $_advice',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
                 height: 1.35,
