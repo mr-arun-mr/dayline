@@ -469,8 +469,11 @@ in for it, and it replaces it.
 
 ### Two circles that overlap
 
-The OS will not watch a circle much smaller than a hundred metres, so two
-places on the same street are inside each other's radius. Standing in one of
+Both vendors ask for a hundred metres and they are right about reliability:
+region monitoring runs off cell and Wi-Fi positioning to stay out of the
+battery, and that is often no better than fifty metres. But a hundred-metre
+circle is also a hundred metres wide, so two places on the same street sit
+inside each other's radius. Standing in one of
 them the device reports both — often in a single callback — and neither report
 is wrong.
 
@@ -493,9 +496,25 @@ the way somewhere else. A short stay the OS itself reported the exit for is
 kept — two minutes at the school gate is a drop-off, and that length is a fact
 rather than a guess.
 
-The place editor says so when a new circle runs into an existing one, naming
-it and the distance: which of two overlapping places you meant is the one
-thing the app cannot work out for itself.
+A circle can be drawn as tight as **50 m** — below what either vendor
+recommends, and below the 150 m a new place starts at. It is the one thing
+that can actually keep two places apart, and the editor is blunt about the
+trade: under 100 m the phone may miss an arrival altogether, or report one
+twice while it sits on a table. Two places 167 m apart are one place at 100 m
+each and two places at 50 m each; two places 44 m apart cannot be separated by
+any circle a phone will watch.
+
+So the editor says, when a circle runs into an existing one, which place it
+runs into, how far away it is, and how tight they would both have to be to
+come apart — or that nothing would do it. Which of two overlapping places you
+meant is the one thing the app cannot work out for itself.
+
+Rows written before any of this are still on the day, and nothing that happens
+later goes back for them — a closed stay stays closed. So every cold start
+tidies them: a stay is cut short where the next one began, which is what the
+recorder would have done at the time, and one left shorter than two minutes is
+dropped, taking the row it put on the day with it. It is cheap and idempotent,
+so a history with no overlaps in it comes out unchanged.
 
 ### Visits you never planned
 

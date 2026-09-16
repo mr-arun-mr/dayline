@@ -71,6 +71,41 @@ void main() {
         kind: PlaceKind.shop,
       ));
 
+  group('how close counts', () {
+    testWidgets('a circle tighter than either vendor likes says so',
+        (tester) async {
+      final tight = await db.placesDao.insertPlace(PlacesCompanion.insert(
+        name: 'LUXE Gym',
+        latitude: 51.5,
+        longitude: -0.12,
+        radiusMeters: const Value(60),
+        colorValue: 0xFF3B82F6,
+        kind: PlaceKind.gym,
+      ));
+
+      await pumpEditor(tester, placeId: tight);
+
+      expect(find.text('60 m'), findsOneWidget);
+      expect(
+        find.textContaining('the phone may miss arrivals altogether'),
+        findsOneWidget,
+      );
+
+      await close(tester);
+    });
+
+    testWidgets('and an ordinary one does not', (tester) async {
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(find.textContaining('Bigger is steadier'), findsOneWidget);
+      expect(find.textContaining('may miss arrivals'), findsNothing);
+
+      await close(tester);
+    });
+  });
+
   group('circles that run into each other', () {
     testWidgets('says which place is too close, and how close', (tester) async {
       // 44 m apart, with the radius floor at 100 m: standing in either one the
@@ -95,6 +130,38 @@ void main() {
       await pumpEditor(tester, placeId: gym);
 
       expect(find.textContaining('away'), findsNothing);
+
+      await close(tester);
+    });
+
+    testWidgets('says how tight the circles would have to be', (tester) async {
+      // 167 m apart: at the default 150 m they overlap, and half the distance
+      // between them is a radius the phone will still watch.
+      await addNeighbour(latitude: 51.5015);
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(
+        find.textContaining('Under 83 m each they would be separate circles'),
+        findsOneWidget,
+      );
+
+      await close(tester);
+    });
+
+    testWidgets('and says when no circle would do it', (tester) async {
+      // 44 m apart: half of that is below the tightest circle either platform
+      // will take, so there is no setting to chase.
+      await addNeighbour();
+      final gym = await addGym();
+
+      await pumpEditor(tester, placeId: gym);
+
+      expect(
+        find.textContaining('Nothing the phone will watch is tight enough'),
+        findsOneWidget,
+      );
 
       await close(tester);
     });

@@ -247,6 +247,62 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
     return row == null ? null : _toVisit(row);
   }
 
+  /// Cuts short stays that overlap each other, and drops what is left of the
+  /// ones that turn out not to have been stays at all.
+  ///
+  /// The recorder can no longer write two stays running at the same time: an
+  /// arrival ends whatever was open elsewhere, and a crossing naming several
+  /// overlapping circles resolves to one of them. Rows written before it
+  /// worked that way are still on the day though, saying the device was in two
+  /// places at once and putting the same hours into two totals — and nothing
+  /// that happens later fixes them, because they are already closed.
+  ///
+  /// So each stay is cut short at the moment the next one began, which is what
+  /// the recorder would have done at the time, and one left shorter than
+  /// [shortestStay] is deleted, taking the row it wrote onto the day with it.
+  ///
+  /// Idempotent: on a history with no overlaps it changes nothing.
+  ///
+  /// Returns the stays it shortened, so the rows they wrote can be told how
+  /// long they really lasted. The dropped ones have nothing left to say.
+  Future<List<Visit>> tidyOverlappingStays() async {
+    final rows = await (select(visits)
+          ..orderBy([
+            (v) => OrderingTerm(expression: v.arrivedAt),
+            (v) => OrderingTerm(expression: v.id),
+          ]))
+        .get();
+
+    final trimmed = <Visit>[];
+    VisitRow? previous;
+
+    for (final row in rows) {
+      final before = previous;
+      previous = row;
+      if (before == null) continue;
+
+      // Whatever the row says, the stay before it cannot still have been
+      // running: the device was somewhere else by then.
+      final end = before.departedAt;
+      if (end != null && !end.isAfter(row.arrivedAt)) continue;
+
+      if (row.arrivedAt.difference(before.arrivedAt) < shortestStay) {
+        await (delete(visits)..where((v) => v.id.equals(before.id))).go();
+        continue;
+      }
+
+      await (update(visits)..where((v) => v.id.equals(before.id)))
+          .write(VisitsCompanion(departedAt: Value(row.arrivedAt)));
+      trimmed.add(Visit(
+        id: before.id,
+        placeId: before.placeId,
+        arrivedAt: before.arrivedAt,
+        departedAt: row.arrivedAt,
+      ));
+    }
+    return trimmed;
+  }
+
   /// Forgets every visit, leaving the places themselves alone.
   Future<int> clearHistory() => delete(visits).go();
 

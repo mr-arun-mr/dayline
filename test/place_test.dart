@@ -41,14 +41,37 @@ void main() {
 
   group('overlapping', () {
     test('two circles a street apart are the same circle to the OS', () {
-      // The floor on the radius is 100 m, so a pair of shops on one street
-      // cannot be told apart however carefully they were placed.
+      // 44 m apart: at any radius the phone will watch, these two are one
+      // place as far as the OS is concerned.
       final shop = at(51.5100, -0.1300, radius: 100, name: 'GS');
       final gym = at(51.5104, -0.1300, radius: 100, name: 'LUXE Gym');
 
       expect(shop.metresTo(gym.latitude, gym.longitude), closeTo(44.5, 1));
       expect(shop.overlaps(gym), isTrue);
       expect(gym.overlaps(shop), isTrue, reason: 'and the other way round');
+      expect(
+        at(51.5100, -0.1300, radius: Place.minimumRadiusMeters)
+            .overlaps(at(51.5104, -0.1300, radius: Place.minimumRadiusMeters)),
+        isTrue,
+        reason: 'even drawn as tight as the phone allows',
+      );
+    });
+
+    test('the tighter floor is what separates two places 150 m apart', () {
+      // 167 m between them: at 100 m each the circles still touch, and at the
+      // 50 m floor they do not. This is the whole reason a circle is allowed
+      // to be drawn smaller than either vendor recommends.
+      const northern = 51.5115;
+      expect(
+        at(51.5100, -0.1300, radius: Place.reliableRadiusMeters)
+            .overlaps(at(northern, -0.1300, radius: Place.reliableRadiusMeters)),
+        isTrue,
+      );
+      expect(
+        at(51.5100, -0.1300, radius: Place.minimumRadiusMeters)
+            .overlaps(at(northern, -0.1300, radius: Place.minimumRadiusMeters)),
+        isFalse,
+      );
     });
 
     test('far enough apart, or tight enough, and they do not', () {
