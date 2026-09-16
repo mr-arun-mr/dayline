@@ -467,9 +467,35 @@ home → office → home is left as a single entry saying "home". When the real
 exit does arrive late, it is more accurate than the arrival that had to stand
 in for it, and it replaces it.
 
-Crossings the OS reports together are exempt from each other, so two
-overlapping circles — a gym inside the office campus — do not close one
-another.
+### Two circles that overlap
+
+The OS will not watch a circle much smaller than a hundred metres, so two
+places on the same street are inside each other's radius. Standing in one of
+them the device reports both — often in a single callback — and neither report
+is wrong.
+
+The device is in one place, so a crossing resolves to one of them:
+
+- a circle the device is not already inside is the news; one it has an open
+  stay at is not, because that stay is already recorded;
+- failing that, the smallest circle, because the tighter fence is the more
+  specific description of where you are — the gym inside the office campus,
+  not the campus.
+
+Everything the crossing named still gets its *routines* ticked off, because
+the phone really was inside all of those circles. It is the stay that admits
+one answer, and recording the same hours twice under two names is the bug.
+
+A stay we ended by inference that turns out to have lasted less than two
+minutes is deleted rather than recorded: neither platform calls an arrival an
+arrival that quickly, so what it describes is the edge of a circle clipped on
+the way somewhere else. A short stay the OS itself reported the exit for is
+kept — two minutes at the school gate is a drop-off, and that length is a fact
+rather than a guess.
+
+The place editor says so when a new circle runs into an existing one, naming
+it and the distance: which of two overlapping places you meant is the one
+thing the app cannot work out for itself.
 
 ### Visits you never planned
 

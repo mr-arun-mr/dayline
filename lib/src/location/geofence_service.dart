@@ -168,50 +168,62 @@ Future<List<Occurrence>> applyGeofenceEvent({
 }) async {
   final touched = <Occurrence>[];
 
-  // Turning up somewhere ends whatever stay was still open somewhere else.
-  // Done once for the whole batch rather than per place, so two overlapping
-  // circles crossed together do not close each other; and done before any
-  // arrival is recorded, so that coming back to a place finds nothing of its
-  // own still open and starts a stay of its own.
-  if (event != GeofenceEvent.exit) {
-    for (final left in await db.placesDao.closeStaysAwayFrom(placeIds, at)) {
-      await db.eventsDao.closeVisitEvent(left);
+  if (event == GeofenceEvent.exit) {
+    for (final placeId in placeIds) {
+      final closed = await db.placesDao.recordDeparture(placeId, at);
+      // Now that the stay has an end, the row it wrote can say how long it
+      // lasted.
+      if (closed != null) await db.eventsDao.closeVisitEvent(closed);
     }
+    return touched;
   }
 
+  // An arrival, then — Android's dwell included, which fires after the
+  // loitering delay, by which point the device is definitely there.
+  //
+  // The crossing may name several places: the OS reports every circle the
+  // device is inside, and it will not watch a circle much under a hundred
+  // metres, so two places on the same street overlap and arriving at one
+  // reports both. Only one of them is where the user is.
+  final here = await db.placesDao.resolveArrival(placeIds);
+  if (here == null) return touched;
+
+  // Turning up ends whatever stay was still open somewhere else, including at
+  // the other circles this same crossing named. Done before the arrival is
+  // recorded, so that coming back to a place finds nothing of its own still
+  // open and starts a stay of its own.
+  for (final left in await db.placesDao.closeStaysElsewhere(here, at)) {
+    await db.eventsDao.closeVisitEvent(left);
+  }
+
+  // recordArrival is idempotent, so an enter followed by a dwell — or an enter
+  // re-delivered on every app start — is still one stay.
+  final visitId = await db.placesDao.recordArrival(here, at);
+
+  // Deliberately after the visit is recorded. If a tick were written first and
+  // the isolate died, there would be a completion with no arrival behind it —
+  // a tick the dashboard could not account for.
+  //
+  // Every place the crossing named is ticked off, not just the one the stay
+  // was recorded at: the phone really was inside all of those circles, and a
+  // routine tied to any of them has been arrived at.
   for (final placeId in placeIds) {
-    switch (event) {
-      case GeofenceEvent.enter:
-      // Android's dwell fires after the loitering delay, by which point the
-      // device is definitely there. Treated as an arrival; recordArrival is
-      // idempotent, so an enter followed by a dwell is still one visit.
-      case GeofenceEvent.dwell:
-        final visitId = await db.placesDao.recordArrival(placeId, at);
-        // Deliberately after the visit is recorded. If the tick were written
-        // first and the isolate died, there would be a completion with no
-        // arrival behind it — a tick the dashboard could not account for.
-        touched.addAll(
-          await db.eventsDao.completeOnArrival(placeId: placeId, at: at),
-        );
-
-        // And only then a row of its own, so that a stay which just ticked off
-        // a planned event is never also filed as an unplanned one.
-        final place = await db.placesDao.placeById(placeId);
-        if (place != null) {
-          final recorded = await db.eventsDao.recordVisitAsEvent(
-            place: place,
-            visitId: visitId,
-            at: at,
-          );
-          if (recorded != null) touched.add(recorded);
-        }
-
-      case GeofenceEvent.exit:
-        final closed = await db.placesDao.recordDeparture(placeId, at);
-        // Now that the stay has an end, the row it wrote can say how long it
-        // lasted.
-        if (closed != null) await db.eventsDao.closeVisitEvent(closed);
-    }
+    touched.addAll(
+      await db.eventsDao.completeOnArrival(placeId: placeId, at: at),
+    );
   }
+
+  // And only then a row of its own, so that a stay which just ticked off a
+  // planned event is never also filed as an unplanned one.
+  final place = await db.placesDao.placeById(here);
+  if (place != null) {
+    final recorded = await db.eventsDao.recordVisitAsEvent(
+      place: place,
+      visitId: visitId,
+      at: at,
+    );
+    if (recorded != null) touched.add(recorded);
+  }
+
   return touched;
 }

@@ -2,6 +2,7 @@ import 'package:dayline/src/db/database.dart';
 import 'package:dayline/src/location/geofence_service.dart';
 import 'package:dayline/src/model/place.dart';
 import 'package:dayline/src/model/place_stats.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:native_geofence/native_geofence.dart' show GeofenceEvent;
@@ -36,11 +37,12 @@ void main() {
         at: at,
       );
 
-  Future<int> addPlace(String name) =>
+  Future<int> addPlace(String name, {double? radius}) =>
       db.placesDao.insertPlace(PlacesCompanion.insert(
         name: name,
         latitude: 51.51,
         longitude: -0.13,
+        radiusMeters: radius == null ? const Value.absent() : Value(radius),
         colorValue: 0xFF64748B,
         kind: PlaceKind.other,
       ));
@@ -184,20 +186,83 @@ void main() {
       expect(totals[office], const Duration(hours: 9));
     });
 
-    test('crossings reported together do not close each other', () async {
-      // Two circles that overlap — a gym inside the office campus — are
-      // entered in one callback. Neither is news about the other.
-      final office = await addPlace('Office');
+    test('a crossing naming two circles records the smaller one', () async {
+      // The OS will not watch a circle much under a hundred metres, so a gym
+      // inside an office campus is inside the campus fence too and both are
+      // reported at once. The device is in one place, and the tighter fence is
+      // the more specific description of it.
+      final office = await addPlace('Office', radius: 400);
 
       await applyGeofenceEvent(
         db: db,
-        placeIds: [gym, office],
+        placeIds: [office, gym],
         event: GeofenceEvent.enter,
         at: at(9),
       );
 
       expect((await db.placesDao.visitsForPlace(gym)).single.isOpen, isTrue);
+      expect(await db.placesDao.visitsForPlace(office), isEmpty,
+          reason: 'the same hours under two names is the bug');
+    });
+
+    test('a circle already open is not what the crossing is about', () async {
+      // The real shape of it: two places a street apart. The first arrival
+      // reports one, and a minute later the crossing for the second reports
+      // both, because the device is inside both. The news is the one that is
+      // not already recorded.
+      final shop = await addPlace('GS');
+
+      await event(GeofenceEvent.enter, at(9, 1), placeId: shop);
+      await applyGeofenceEvent(
+        db: db,
+        placeIds: [shop, gym],
+        event: GeofenceEvent.enter,
+        at: at(9, 2),
+      );
+      await applyGeofenceEvent(
+        db: db,
+        placeIds: [shop, gym],
+        event: GeofenceEvent.exit,
+        at: at(12, 30),
+      );
+
+      final atGym = await db.placesDao.visitsForPlace(gym);
+      expect(atGym.single.arrivedAt, at(9, 2));
+      expect(atGym.single.departedAt, at(12, 30));
+      expect(await db.placesDao.visitsForPlace(shop), isEmpty,
+          reason: 'a minute at the edge of a circle is not a visit');
+    });
+
+    test('a stay clipped on the way past is dropped, not recorded', () async {
+      // Ended by our own inference rather than by the OS, and shorter than
+      // either platform takes to call an arrival an arrival.
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(9), placeId: gym);
+      await event(GeofenceEvent.enter, at(9, 1), placeId: office);
+
+      expect(await db.placesDao.visitsForPlace(gym), isEmpty);
       expect((await db.placesDao.visitsForPlace(office)).single.isOpen, isTrue);
+    });
+
+    test('a long stay ended the same way is kept', () async {
+      final office = await addPlace('Office');
+
+      await event(GeofenceEvent.enter, at(9), placeId: gym);
+      await event(GeofenceEvent.enter, at(9, 2), placeId: office);
+
+      expect((await db.placesDao.visitsForPlace(gym)).single.departedAt,
+          at(9, 2));
+    });
+
+    test('a short stay the OS itself ended is still a stay', () async {
+      // Two minutes at the school gate is a drop-off. The OS reported the
+      // exit, so the length is a fact rather than a guess, and facts stand.
+      await event(GeofenceEvent.enter, at(8, 30));
+      await event(GeofenceEvent.exit, at(8, 31));
+
+      expect((await db.placesDao.visitsForPlace(gym)).single.departedAt,
+          at(8, 31));
     });
 
     test('an arrival older than the stay leaves it alone', () async {

@@ -136,12 +136,55 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// The nearest place whose circle this one runs into.
+  ///
+  /// Worth saying out loud, because the floor on the radius makes it easy to
+  /// do by accident: two shops on the same street are inside each other's
+  /// hundred metres, and standing in either one the OS reports both.
+  Place? _overlapping(List<Place> others) {
+    final lat = _latitude;
+    final lon = _longitude;
+    if (lat == null || lon == null) return null;
+
+    final here = Place(
+      id: widget.placeId ?? -1,
+      name: '',
+      latitude: lat,
+      longitude: lon,
+      radiusMeters: _radius,
+      colorValue: _colorValue,
+    );
+
+    Place? nearest;
+    var gap = double.infinity;
+    for (final other in others) {
+      if (other.id == widget.placeId) continue;
+      final metres = here.metresTo(other.latitude, other.longitude);
+      if (metres >= gap || !here.overlaps(other)) continue;
+      nearest = other;
+      gap = metres;
+    }
+    return nearest;
+  }
+
+  /// How far this place's centre is from [other]'s.
+  double _overlapDistance(Place other) => Place(
+    id: -1,
+    name: '',
+    latitude: _latitude!,
+    longitude: _longitude!,
+    radiusMeters: _radius,
+    colorValue: _colorValue,
+  ).metresTo(other.latitude, other.longitude);
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final theme = Theme.of(context);
+    final others = ref.watch(placesProvider).value ?? const <Place>[];
+    final clash = _overlapping(others);
 
     return Scaffold(
       appBar: AppBar(
@@ -189,6 +232,11 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
               radius: _radius,
               onChanged: (value) => setState(() => _radius = value),
             ),
+            if (clash != null)
+              _OverlapNote(
+                other: clash,
+                metres: _overlapDistance(clash),
+              ),
             const Divider(),
             _AddVisitsSwitch(
               value: _addVisitsToDay,
@@ -473,6 +521,55 @@ class _ColourPicker extends StatelessWidget {
                     ),
                   ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Gym is 40 m from here."
+///
+/// Two circles that overlap cannot be told apart: standing in the overlap the
+/// OS reports both, and neither report is wrong. Dayline records the stay at
+/// the smaller of the two rather than at both — but the user is the only one
+/// who knows which of them they actually meant, so they are told rather than
+/// quietly corrected.
+class _OverlapNote extends StatelessWidget {
+  const _OverlapNote({required this.other, required this.metres});
+
+  final Place other;
+  final double metres;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DaylineTheme.gutter,
+        0,
+        DaylineTheme.gutter,
+        14,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 20, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              '${other.name} is ${metres.round()} m away, so the two circles '
+              'overlap. The phone cannot tell them apart: arriving at either '
+              'reports both, and the stay is recorded at whichever circle is '
+              'smaller. Shrink one, or move it, if they are meant to be '
+              'separate places.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.35,
+              ),
             ),
           ),
         ],

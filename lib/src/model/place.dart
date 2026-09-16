@@ -1,3 +1,5 @@
+import 'dart:math';
+
 /// What a place is for, which is only ever used to pick an icon and to group
 /// the dashboard. Nothing is inferred from it.
 enum PlaceKind {
@@ -62,7 +64,46 @@ class Place {
   static const minimumRadiusMeters = 100.0;
   static const defaultRadiusMeters = 150.0;
   static const maximumRadiusMeters = 2000.0;
+
+  /// Metres from here to there, on a sphere.
+  ///
+  /// Haversine, with the earth as a ball: at the scale a geofence works on —
+  /// a few hundred metres — the error against a proper ellipsoid is
+  /// centimetres, and this needs no plugin, so it can be reasoned about and
+  /// tested without a device.
+  double metresTo(double lat, double lon) {
+    const earthRadius = 6371008.8;
+    const toRadians = pi / 180;
+
+    final dLat = (lat - latitude) * toRadians;
+    final dLon = (lon - longitude) * toRadians;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(latitude * toRadians) *
+            cos(lat * toRadians) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    return 2 * earthRadius * asin(min(1, sqrt(a)));
+  }
+
+  /// Whether this place's circle and [other]'s touch.
+  ///
+  /// Two circles that overlap cannot be told apart by the OS: standing in the
+  /// overlap it reports both, and neither report is wrong. Worth saying out
+  /// loud when a place is being drawn, because the floor on the radius makes
+  /// it easy to do by accident — two shops on the same street are inside each
+  /// other's hundred metres.
+  bool overlaps(Place other) =>
+      metresTo(other.latitude, other.longitude) <
+      radiusMeters + other.radiusMeters;
 }
+
+/// Shorter than this and a stay we inferred the end of was not a stay.
+///
+/// Neither platform will call an arrival an arrival faster than about this —
+/// Android waits it out as a loitering delay — so a stay that we ourselves cut
+/// short, and that turns out to have lasted less, is the edge of a circle
+/// clipped on the way somewhere else rather than somewhere the user went.
+const shortestStay = Duration(minutes: 2);
 
 /// One stay at a place: when the device arrived and, once it has, when it left.
 class Visit {
