@@ -58,8 +58,12 @@ void main() {
 
   setUp(() => nextId = 1);
 
-  DaySummary summarise(List<Occurrence> list, {bool isToday = true}) =>
-      DaySummary.from(occurrences: list, now: now, isToday: isToday);
+  DaySummary summarise(List<Occurrence> list,
+          {bool isToday = true, DateTime? at}) =>
+      DaySummary.from(occurrences: list, now: at ?? now, isToday: isToday);
+
+  // Looked at the evening before, so everything on [date] is still to come.
+  final dayBefore = DateTime(2026, 9, 10, 20);
 
   group('the day in one line', () {
     test('splits around now, with exactly one next up', () {
@@ -160,7 +164,7 @@ void main() {
       final summary = summarise([
         occurrence('Gym', 7 * 60),
         occurrence('Standup', 9 * 60 + 30),
-      ], isToday: false);
+      ], isToday: false, at: dayBefore);
 
       expect(summary.overdue, isEmpty);
       expect(summary.nextUp, isNull);
@@ -183,7 +187,7 @@ void main() {
     test('but a marked occurrence is still shown as done', () {
       final summary = summarise([
         occurrence('Gym', 7 * 60, status: CompletionStatus.done),
-      ], isToday: false);
+      ], isToday: false, at: dayBefore);
 
       expect(summary.done, hasLength(1));
       expect(summary.later, hasLength(1),
