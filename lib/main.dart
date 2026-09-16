@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'src/app.dart';
 import 'src/db/database.dart';
 import 'src/db/debug_seed.dart';
+import 'src/db/tidy_stays.dart';
 import 'src/providers.dart';
 
 Future<void> main() async {
@@ -42,6 +43,16 @@ Future<void> _startUp(
     } catch (error) {
       debugPrint('Dayline: debug seed failed — $error');
     }
+  }
+
+  // Two stays that ran at the same time are a device in two places at once.
+  // They cannot be recorded any more, but older ones are still on the day, and
+  // nothing that happens later goes back for them.
+  try {
+    final tidied = await tidyRecordedStays(database);
+    if (tidied > 0) debugPrint('Dayline: shortened $tidied overlapping stays');
+  } catch (error) {
+    debugPrint('Dayline: could not tidy visit history — $error');
   }
 
   // Set up the OS side early, so a cold start repairs anything a reboot or a

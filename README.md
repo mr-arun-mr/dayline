@@ -497,6 +497,13 @@ The place editor says so when a new circle runs into an existing one, naming
 it and the distance: which of two overlapping places you meant is the one
 thing the app cannot work out for itself.
 
+Rows written before any of this are still on the day, and nothing that happens
+later goes back for them — a closed stay stays closed. So every cold start
+tidies them: a stay is cut short where the next one began, which is what the
+recorder would have done at the time, and one left shorter than two minutes is
+dropped, taking the row it put on the day with it. It is cheap and idempotent,
+so a history with no overlaps in it comes out unchanged.
+
 ### Visits you never planned
 
 A place can also put its own stays onto the day, under **Add visits to my day**
