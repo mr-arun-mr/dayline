@@ -5,6 +5,7 @@ import 'package:dayline/src/model/recurrence.dart';
 import 'package:dayline/src/providers.dart';
 import 'package:dayline/src/ui/dashboard/dashboard_screen.dart';
 import 'package:dayline/src/ui/dashboard/place_bars.dart';
+import 'package:dayline/src/ui/dashboard/visit_timeline.dart';
 import 'package:dayline/src/ui/theme.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -64,6 +65,13 @@ void main() {
     matching: find.text(text),
   );
 
+  /// Place names appear in the bars as well, once each; in the timeline they
+  /// appear once per stay, which is the thing being asserted.
+  Finder inTimeline(String text) => find.descendant(
+    of: find.byType(VisitTimeline),
+    matching: find.text(text),
+  );
+
   Future<void> close(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
     await db.close();
@@ -99,8 +107,51 @@ void main() {
 
     await pump(tester);
 
-    expect(find.textContaining('18:00 –'), findsOneWidget);
+    expect(inTimeline('Arrived 18:00 · still there'), findsOneWidget);
     expect(find.textContaining('now · 2h 15m'), findsOneWidget);
+
+    await close(tester);
+  });
+
+  testWidgets('every stay is a line of its own, both ends spelled out',
+      (tester) async {
+    // Out and back: the day is three stays, two of them at the same place, and
+    // the timeline has to say so rather than collapsing them into one entry.
+    final home = await addPlace('Brindley Point');
+    final office = await addPlace('Office', colour: 0xFF64748B);
+
+    await stay(home, today, 7 * 60, 8 * 60 + 30);
+    await stay(office, today, 9 * 60, 17 * 60 + 30);
+    await stay(home, today, 18 * 60, 19 * 60);
+
+    await pump(tester);
+
+    expect(inTimeline('Brindley Point'), findsNWidgets(2));
+    expect(inTimeline('Office'), findsOneWidget);
+    expect(inTimeline('Arrived 07:00 · left 08:30'), findsOneWidget);
+    expect(inTimeline('Arrived 09:00 · left 17:30'), findsOneWidget);
+    expect(inTimeline('Arrived 18:00 · left 19:00'), findsOneWidget);
+
+    await close(tester);
+  });
+
+  testWidgets('a stay carried over from yesterday says which day it began',
+      (tester) async {
+    // 22:00 with nothing after it reads as tonight, and this one is last
+    // night — the stay the day opened in the middle of.
+    final home = await addPlace('Home');
+    await db.into(db.visits).insert(VisitsCompanion.insert(
+      placeId: home,
+      arrivedAt: today.addDays(-1).localDateTimeAt(22 * 60),
+      departedAt: Value(today.localDateTimeAt(7 * 60)),
+    ));
+
+    await pump(tester);
+
+    expect(
+      inTimeline('Arrived 22:00 yesterday · left 07:00'),
+      findsOneWidget,
+    );
 
     await close(tester);
   });

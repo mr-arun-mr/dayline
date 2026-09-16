@@ -87,6 +87,47 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
     );
   }
 
+  /// Ends any stay still open somewhere other than [placeIds], because a
+  /// device cannot be in two places at once.
+  ///
+  /// The exit both platforms are likeliest to drop is the one for the place
+  /// just left — the crossing they are busy reporting is the arrival. Left
+  /// alone, the morning at home never ends: the day at the office is recorded
+  /// *inside* it, coming home again finds that stay still open and is folded
+  /// into it, and a day that went home to office and back is left saying "home"
+  /// once, with no departure and no return.
+  ///
+  /// [placeIds] is the whole batch the OS reported at once, not one place, so
+  /// that two overlapping circles entered together do not close each other.
+  ///
+  /// Returns the stays this ended, so the rows they wrote onto the day can be
+  /// given an end too.
+  Future<List<Visit>> closeStaysAwayFrom(
+    Iterable<int> placeIds,
+    DateTime at,
+  ) async {
+    final here = placeIds.toList();
+    final rows = await (select(visits)
+          ..where((v) => v.placeId.isNotIn(here) & v.departedAt.isNull()))
+        .get();
+
+    final closed = <Visit>[];
+    for (final row in rows) {
+      // An arrival older than the stay it would close is a crossing delivered
+      // out of order, and says nothing about when that stay ended.
+      if (!at.isAfter(row.arrivedAt)) continue;
+      await (update(visits)..where((v) => v.id.equals(row.id)))
+          .write(VisitsCompanion(departedAt: Value(at)));
+      closed.add(Visit(
+        id: row.id,
+        placeId: row.placeId,
+        arrivedAt: row.arrivedAt,
+        departedAt: at,
+      ));
+    }
+    return closed;
+  }
+
   /// Records that the device left, and returns the stay it closed.
   ///
   /// An exit with no matching arrival is dropped rather than invented: a visit
@@ -95,7 +136,7 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
   /// that turned out not to be one.
   Future<Visit?> recordDeparture(int placeId, DateTime at) async {
     final open = await _openVisitFor(placeId);
-    if (open == null) return null;
+    if (open == null) return _correctEndOfStay(placeId, at);
     // A departure before the arrival is a clock adjustment, not a stay.
     if (!at.isAfter(open.arrivedAt)) {
       await (delete(visits)..where((v) => v.id.equals(open.id))).go();
@@ -107,6 +148,41 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
       id: open.id,
       placeId: open.placeId,
       arrivedAt: open.arrivedAt,
+      departedAt: at,
+    );
+  }
+
+  /// An exit that turns up after the stay it belongs to was already closed.
+  ///
+  /// [closeStaysAwayFrom] only knows when the device turned up somewhere else,
+  /// which is later than when it left; the OS knows when it left. So a late
+  /// exit landing inside a recorded stay is better information than the end
+  /// already on it, and wins. An exit after the stay ended is a duplicate and
+  /// changes nothing.
+  Future<Visit?> _correctEndOfStay(int placeId, DateTime at) async {
+    final row = await (select(visits)
+          ..where((v) => v.placeId.equals(placeId))
+          ..orderBy([
+            (v) => OrderingTerm(
+              expression: v.arrivedAt,
+              mode: OrderingMode.desc,
+            ),
+          ])
+          ..limit(1))
+        .getSingleOrNull();
+    if (row == null) return null;
+
+    final departed = row.departedAt;
+    // No open stay, so this cannot be null; belt and braces.
+    if (departed == null) return null;
+    if (!at.isAfter(row.arrivedAt) || !departed.isAfter(at)) return null;
+
+    await (update(visits)..where((v) => v.id.equals(row.id)))
+        .write(VisitsCompanion(departedAt: Value(at)));
+    return Visit(
+      id: row.id,
+      placeId: row.placeId,
+      arrivedAt: row.arrivedAt,
       departedAt: at,
     );
   }
