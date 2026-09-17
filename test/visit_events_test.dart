@@ -87,6 +87,9 @@ void main() {
 
     test('writes a one-off, not a routine', () async {
       await arrive(gym, at(10));
+      // Left again, because a stay still running has genuinely reached
+      // tomorrow and the day line says so. This is about the rule.
+      await leave(gym, at(11));
 
       final row = (await db.select(db.events).get()).single;
       expect(row.recurrence, Recurrence.once);

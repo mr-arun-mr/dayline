@@ -64,6 +64,13 @@ class PlacesDao extends DatabaseAccessor<DaylineDatabase> with _$PlacesDaoMixin 
         read: () => visitsBetween(from, to),
       );
 
+  /// One stay by id, for anything that holds a visit id rather than the row.
+  Future<Visit?> visitById(int id) async {
+    final row =
+        await (select(visits)..where((v) => v.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _toVisit(row);
+  }
+
   Future<List<Visit>> visitsForPlace(int placeId) async {
     final rows = await (select(visits)
           ..where((v) => v.placeId.equals(placeId))

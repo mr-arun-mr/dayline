@@ -245,9 +245,16 @@ final selectedDateProvider =
 );
 
 /// Everything happening on one date, kept live.
+///
+/// The clock goes with it because a stay that is still running has no end of
+/// its own: which days it touches is a question about now, and the screen and
+/// the query have to answer it the same way.
 final occurrencesProvider =
     StreamProvider.family<List<Occurrence>, CalendarDate>(
-  (ref, date) => ref.watch(eventsDaoProvider).watchOccurrencesForDate(date),
+  (ref, date) => ref.watch(eventsDaoProvider).watchOccurrencesForDate(
+        date,
+        clock: ref.watch(clockProvider),
+      ),
 );
 
 /// A one-second tick, for the "next up" countdown only.

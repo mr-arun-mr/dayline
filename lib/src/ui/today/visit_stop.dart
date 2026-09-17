@@ -42,6 +42,37 @@ class VisitStop extends StatelessWidget {
   static String _clock(DateTime time) =>
       formatWallClock(time.hour * 60 + time.minute);
 
+  /// What the row says under the title: that this is somewhere you went, and
+  /// which day either end of it belongs to when it is not this one.
+  ///
+  /// A stay is one thing seen from every day it touches, so the day it began
+  /// is as worth saying as the day it ended. The arrival is said first: on a
+  /// morning that carried on from last night it is the part of the row a bare
+  /// clock time gets wrong.
+  static String _visited({
+    required CalendarDate date,
+    required DateTime? arrived,
+    required DateTime? departed,
+  }) {
+    final from = arrived == null ? null : _elsewhere(date, arrived);
+    if (from != null) {
+      return 'Visited · arrived ${_clock(arrived!)} $from';
+    }
+    if (departed == null) return 'Visited · still there';
+    final to = _elsewhere(date, departed);
+    return to == null ? 'Visited' : 'Visited · left ${_clock(departed)} $to';
+  }
+
+  /// "the next day", "the day before", or a date — for an end of the stay that
+  /// is not on the day being drawn. Null when it is.
+  static String? _elsewhere(CalendarDate date, DateTime time) =>
+      switch (date.daysUntil(CalendarDate.fromDateTime(time))) {
+        0 => null,
+        1 => 'the next day',
+        -1 => 'the day before',
+        _ => 'on ${formatDayAndMonth(CalendarDate.fromDateTime(time))}',
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -63,10 +94,14 @@ class VisitStop extends StatelessWidget {
       length = null;
     }
 
-    // A stay that ran past midnight leaves a bare "00:20" in the column, which
-    // reads as this morning. Only then is there anything left to spell out.
-    final ranOver = departed != null &&
-        CalendarDate.fromDateTime(departed) != occurrence.date;
+    // A time with no date on it reads as this day's. A stay that began last
+    // night, or that ran past midnight, leaves a bare "19:41" or "00:20" in
+    // the column saying the wrong thing, so those are the ones spelled out.
+    final line = _visited(
+      date: occurrence.date,
+      arrived: visit?.arrivedAt,
+      departed: departed,
+    );
 
     return InkWell(
       // Somewhere you went is not a checkbox, so a tap opens it rather than
@@ -138,12 +173,8 @@ class VisitStop extends StatelessWidget {
                       Text(
                         // Why this row is here at all, for one the user did
                         // not write — and, for a stay that crossed midnight,
-                        // which day that bare "00:20" belongs to.
-                        ranOver
-                            ? 'Visited · left ${_clock(departed)} the next day'
-                            : departed == null
-                                ? 'Visited · still there'
-                                : 'Visited',
+                        // which day that bare clock time belongs to.
+                        line,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),

@@ -8,6 +8,7 @@ import 'src/app.dart';
 import 'src/db/database.dart';
 import 'src/db/debug_seed.dart';
 import 'src/db/tidy_stays.dart';
+import 'src/model/calendar_date.dart';
 import 'src/providers.dart';
 
 Future<void> main() async {
@@ -53,6 +54,19 @@ Future<void> _startUp(
     if (tidied > 0) debugPrint('Dayline: shortened $tidied overlapping stays');
   } catch (error) {
     debugPrint('Dayline: could not tidy visit history — $error');
+  }
+
+  // A stay only ever reached the day at the moment it was recorded, so a day
+  // could be missing one for reasons of its own — the place was told to add
+  // its visits afterwards, or the callback never ran while the app was dead.
+  // The visits themselves are the record, so the day is filled in from them.
+  try {
+    final today = CalendarDate.fromDateTime(DateTime.now());
+    final filled = await database.eventsDao.fillDayFromVisits(today) +
+        await database.eventsDao.fillDayFromVisits(today.addDays(-1));
+    if (filled > 0) debugPrint('Dayline: put $filled stays back on the day');
+  } catch (error) {
+    debugPrint('Dayline: could not fill the day from visits — $error');
   }
 
   // Set up the OS side early, so a cold start repairs anything a reboot or a
