@@ -525,9 +525,27 @@ in when you leave.
 
 Off by default and per place — it is the one setting that writes rows you did
 not ask for, which is worth having for the gym and quietly wrong for home. It
-also writes nothing when the day already accounts for being there: a routine
-tied to that place within the usual two hours *is* that record, and a second
-row saying the same thing is the noise this is meant to remove.
+also writes nothing when a routine on the day is already *showing* that stay:
+the 07:00 workout picks up the arrival at 07:04 and says so on its own row, so
+a second row an hour later saying "Gym" is the noise this is meant to remove.
+
+Stay by stay, though, and judged by the same matcher the row displays with.
+Going back to the gym at two is a second stay that nothing on the day accounts
+for, and it gets a row of its own — four trips in a day is four stays, which is
+what the dashboard has always said.
+
+The day and the time come from the stay, never from the moment the crossing was
+reported. Both platforms re-deliver an enter for a circle the device is already
+sitting in, on every app start, so a stay that began at 19:41 last night is
+reported again at 08:28 this morning — and filing it under this morning loses
+it from last night's day and puts it in the wrong place on this one.
+
+Turning the setting on applies to the stays already recorded there, and every
+cold start fills in the last two days the same way: the visits are the record,
+and a day could be missing one for reasons of its own — the place was told to
+add its visits afterwards, or the crossing arrived while the app was dead and
+the callback never ran. Only stays that *began* on the day are written, and it
+declines exactly what an arrival declines, so running it twice changes nothing.
 
 These entries are the day's record, not rules, so they stay out of All events,
 out of the dashboard's adherence, and out of the progress ring — "2 of 3 done"
@@ -544,6 +562,11 @@ journey rather than as a stack of unrelated rows:
   ──  08:42  ────────────────────────────────────────────
 09:00  ○  Standup
 ```
+
+A stay that ran over from the night before is on this morning too, at the top
+of it, where the day found it already in progress — one stay seen from two
+days, exactly as the dashboard lists it, and drawn once on each. It says which
+day it began, because a bare `19:41` in the clock column reads as this one.
 
 **Hide done** folds away events that have been ticked or skipped, and only
 those. A stay is never hidden: it is not a task that was tidied up, it already

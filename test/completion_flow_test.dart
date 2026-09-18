@@ -318,6 +318,40 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('a stay that began last night says so on this morning',
+        (tester) async {
+      // The night at home ran into this morning. It is one stay seen from two
+      // days, and a bare "19:41" in the clock column reads as this one.
+      final home = await addPlace('Brindley Point');
+      final place = (await db.placesDao.placeById(home))!;
+      final visitId = await db.placesDao
+          .recordArrival(home, DateTime(2026, 9, 10, 19, 41));
+      await db.eventsDao.recordVisitAsEvent(
+        place: Place(
+          id: place.id,
+          name: place.name,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          radiusMeters: place.radiusMeters,
+          colorValue: place.colorValue,
+          addVisitsToDay: true,
+        ),
+        visitId: visitId,
+        at: DateTime(2026, 9, 10, 19, 41),
+      );
+      await db.placesDao.recordDeparture(home, DateTime(2026, 9, 11, 8, 46));
+
+      await pumpApp(tester);
+
+      expect(find.text('Brindley Point'), findsOneWidget);
+      expect(
+        find.textContaining('arrived 19:41 the day before'),
+        findsOneWidget,
+      );
+
+      await close(tester);
+    });
+
     testWidgets('a stay is not folded away with what was done',
         (tester) async {
       // Hiding is for events the user has dealt with. Somewhere the phone

@@ -131,6 +131,18 @@ class _EditPlaceScreenState extends ConsumerState<EditPlaceScreen> {
     } else {
       await dao.updatePlace(companion);
     }
+
+    // Turning it on applies to the stays already recorded here, not only to
+    // the next arrival. Otherwise the setting looks broken for the rest of the
+    // day: the dashboard has been listing this morning at the gym all along,
+    // and the day line would carry on without it until you next walk in.
+    if (_addVisitsToDay) {
+      final today = ref.read(todayProvider);
+      final events = ref.read(eventsDaoProvider);
+      await events.fillDayFromVisits(today);
+      await events.fillDayFromVisits(today.addDays(-1));
+    }
+
     // The OS is watching a stale set of circles until this runs.
     await ref.read(geofenceServiceProvider).reconcile();
     if (mounted) Navigator.of(context).pop();

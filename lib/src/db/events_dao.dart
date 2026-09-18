@@ -52,12 +52,19 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
   /// Everything happening on [date], in the order it happens.
   ///
   /// Expand active rules → drop SKIP overrides → apply MOVED overrides → join
-  /// completions → sort by effective time.
+  /// completions → sort by effective time → thread the day's stays onto it.
   ///
   /// SQL narrows the candidates to rules whose date window contains [date];
   /// the rule itself (weekday mask, every-N modulo, clamped month day) is
   /// applied in Dart, where the arithmetic is integer-exact and testable.
-  Future<List<Occurrence>> occurrencesForDate(CalendarDate date) async {
+  ///
+  /// [clock] is where "now" comes from, which only an open stay depends on:
+  /// one that is still running has to be given an end before it can be asked
+  /// which days it touches.
+  Future<List<Occurrence>> occurrencesForDate(
+    CalendarDate date, {
+    DateTime Function()? clock,
+  }) async {
     final epochDay = date.epochDay;
 
     final candidateRows = await (select(events)
@@ -78,20 +85,26 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         .where((event) =>
             event.rule.occursOn(date) && !event.isPausedOn(date, holidays))
         .toList();
-    if (candidates.isEmpty) return const [];
 
+    // Deliberately not an early return when there are no rules: a day with
+    // nothing planned can still have been somewhere, and the stays are
+    // threaded on at the end.
     final ids = candidates.map((e) => e.id).toList();
 
-    final overrideRows = await (select(overrides)
-          ..where((o) => o.date.equals(epochDay) & o.eventId.isIn(ids)))
-        .get();
+    final overrideRows = ids.isEmpty
+        ? const <OverrideRow>[]
+        : await (select(overrides)
+              ..where((o) => o.date.equals(epochDay) & o.eventId.isIn(ids)))
+            .get();
     final overrideByEvent = {
       for (final o in overrideRows) o.eventId: o,
     };
 
-    final completionRows = await (select(completions)
-          ..where((c) => c.date.equals(epochDay) & c.eventId.isIn(ids)))
-        .get();
+    final completionRows = ids.isEmpty
+        ? const <CompletionRow>[]
+        : await (select(completions)
+              ..where((c) => c.date.equals(epochDay) & c.eventId.isIn(ids)))
+            .get();
     final completionByEvent = {
       for (final c in completionRows) c.eventId: c,
     };
@@ -117,19 +130,118 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
       ));
     }
 
-    result.sort((a, b) {
-      final byTime = a.effectiveTimeOfDay.compareTo(b.effectiveTimeOfDay);
-      if (byTime != 0) return byTime;
-      final byTitle = a.event.title.toLowerCase()
-          .compareTo(b.event.title.toLowerCase());
-      if (byTitle != 0) return byTitle;
-      return a.eventId.compareTo(b.eventId);
-    });
+    result.sort(_byTimeThenTitle);
 
     // Planned, meet actual: anything tied to a place picks up the stay that
     // lines up with it, so the row can say both when it was meant to happen
     // and when the user was really there.
-    return withVisits(result, await _visitsAround(date));
+    final stays = await _visitsAround(date);
+    final now = (clock ?? DateTime.now)();
+    return _threadStaysOnto(withVisits(result, stays), date, stays, now);
+  }
+
+  /// Puts every stay that touches [date] in its place on the day's line.
+  ///
+  /// A stay is a fact about a day, not a rule that happens to fall on one, so
+  /// where it belongs is decided by the visit rather than by the row's date:
+  ///
+  /// * a row whose stay began earlier — the night at home that ran into this
+  ///   morning — is carried onto this day too, at the top, where the day found
+  ///   it already in progress. It is one stay seen from two days, which is
+  ///   what the dashboard has always shown and what the day line was missing.
+  /// * a row is positioned by when the stay began rather than by the time
+  ///   written on it, so a crossing the OS re-delivered hours later cannot
+  ///   file last night's arrival under this morning.
+  ///
+  /// Nothing is written: the rows are already there, and this only decides
+  /// which day draws them and where.
+  Future<List<Occurrence>> _threadStaysOnto(
+    List<Occurrence> occurrences,
+    CalendarDate date,
+    List<Visit> stays,
+    DateTime now,
+  ) async {
+    final touching = visitsOnDay(stays, date, now: now);
+    if (touching.isEmpty) return occurrences;
+
+    final result = [
+      for (final occurrence in occurrences)
+        if (occurrence.isVisitRecord && occurrence.visit != null)
+          occurrence.copyWith(
+            effectiveTimeOfDay: _stayBeginsAt(occurrence.visit!, date),
+          )
+        else
+          occurrence,
+    ];
+
+    result.addAll(await _staysCarriedInto(
+      date,
+      touching,
+      {for (final occurrence in result) occurrence.eventId},
+    ));
+
+    result.sort(_byTimeThenTitle);
+    return result;
+  }
+
+  /// Where on [date] a stay sits: when it began, or the top of the day when it
+  /// began before the day did.
+  static int _stayBeginsAt(Visit visit, CalendarDate date) =>
+      CalendarDate.fromDateTime(visit.arrivedAt) == date
+          ? visit.arrivedAt.hour * 60 + visit.arrivedAt.minute
+          : 0;
+
+  /// The rows for stays that touch [date] but are filed under another day.
+  ///
+  /// [already] is the ids [date] has expanded for itself, so a stay that began
+  /// today is drawn once rather than twice.
+  Future<List<Occurrence>> _staysCarriedInto(
+    CalendarDate date,
+    List<Visit> touching,
+    Set<int> already,
+  ) async {
+    final byVisit = {for (final visit in touching) visit.id: visit};
+    if (byVisit.isEmpty) return const [];
+
+    final rows = await (select(events)
+          ..where((e) => e.fromVisitId.isIn(byVisit.keys.toList())))
+        .get();
+    final carried = rows.where((row) => !already.contains(row.id)).toList();
+    if (carried.isEmpty) return const [];
+
+    // A stay's row is ticked off on the day it was written, which is not the
+    // day being drawn — so the completion is read by event rather than by
+    // date. There is only ever one: a stay happened once.
+    final completionRows = await (select(completions)
+          ..where((c) => c.eventId.isIn(carried.map((r) => r.id).toList())))
+        .get();
+    final completionByEvent = {for (final c in completionRows) c.eventId: c};
+
+    return [
+      for (final row in carried)
+        () {
+          final completion = completionByEvent[row.id];
+          final visit = byVisit[row.fromVisitId]!;
+          return Occurrence(
+            event: _toEvent(row),
+            date: date,
+            effectiveTimeOfDay: _stayBeginsAt(visit, date),
+            status: completion?.status,
+            completedAt: completion?.completedAt,
+            isAutomatic: completion?.isAutomatic ?? false,
+            visit: visit,
+          );
+        }(),
+    ];
+  }
+
+  static int _byTimeThenTitle(Occurrence a, Occurrence b) {
+    final byTime = a.effectiveTimeOfDay.compareTo(b.effectiveTimeOfDay);
+    if (byTime != 0) return byTime;
+    final byTitle =
+        a.event.title.toLowerCase().compareTo(b.event.title.toLowerCase());
+    if (byTitle != 0) return byTitle;
+    return a.eventId.compareTo(b.eventId);
   }
 
   /// The stays that could line up with something on [date].
@@ -167,7 +279,10 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
   /// [occurrencesForDate], re-run whenever anything it reads changes.
   ///
   /// See [liveQuery] for why this is not drift's own `.watch()`.
-  Stream<List<Occurrence>> watchOccurrencesForDate(CalendarDate date) =>
+  Stream<List<Occurrence>> watchOccurrencesForDate(
+    CalendarDate date, {
+    DateTime Function()? clock,
+  }) =>
       liveQuery(
         updates: attachedDatabase.tableUpdates(
           TableUpdateQuery.onAllTables([
@@ -180,7 +295,7 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
             holidays,
           ]),
         ),
-        read: () => occurrencesForDate(date),
+        read: () => occurrencesForDate(date, clock: clock),
       );
 
   /// Every completion recorded against one rule, keyed by date.
@@ -327,7 +442,9 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
     final completed = <Occurrence>[];
 
     for (final date in datesInGraceOf(at, grace: grace)) {
-      for (final occurrence in await occurrencesForDate(date)) {
+      // The day as it stood when the crossing happened, not as it stands now:
+      // an enter delivered late is still about the moment it names.
+      for (final occurrence in await occurrencesForDate(date, clock: () => at)) {
         if (!occurrence.event.completesOnArrival) continue;
         if (occurrence.event.placeId != placeId) continue;
         // Idempotent by construction: a second enter for the same stay finds
@@ -369,22 +486,27 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
   /// Saturday, the trip to the shop — so the day reads as what actually
   /// happened rather than only as what was intended.
   ///
-  /// It writes nothing unless the place asked for it, and nothing at all if
-  /// the day already accounts for being there: an event tied to this place
-  /// within [grace] of the arrival is that account, whether the user marked it
-  /// or the app did. Two rows saying "Gym" an hour apart is exactly the noise
-  /// this is supposed to remove.
+  /// It writes nothing unless the place asked for it, and nothing when a plan
+  /// on the day is already showing *this* stay: the 07:00 workout picks up the
+  /// arrival at 07:04 and says so on its own row, and a second row an hour
+  /// later saying "Gym" is the noise this exists to remove. Judged stay by
+  /// stay, by the same matcher the row itself displays with — so going back in
+  /// the afternoon, which no plan is showing, still gets a row of its own
+  /// rather than being swallowed by the morning's.
   ///
-  /// Keyed on the visit, so however many times the OS re-delivers a crossing —
-  /// and it will, on every app start, for a place the device is already
-  /// sitting in — one stay produces one row.
+  /// The day and the time come from the visit, never from when the crossing
+  /// was reported. Both platforms re-deliver an enter for a place the device
+  /// is already sitting in — on every app start — and [at] is then this
+  /// morning while the stay itself began last night.
+  ///
+  /// Keyed on the visit, so however many times the OS re-delivers a crossing,
+  /// one stay produces one row.
   ///
   /// Returns the occurrence it wrote, or null if it wrote nothing.
   Future<Occurrence?> recordVisitAsEvent({
     required Place place,
     required int visitId,
     required DateTime at,
-    Duration grace = arrivalGrace,
   }) async {
     if (!place.addVisitsToDay) return null;
 
@@ -394,18 +516,16 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
         .getSingleOrNull();
     if (existing != null) return null;
 
-    final date = CalendarDate.fromDateTime(at);
-    final timeOfDay = at.hour * 60 + at.minute;
+    // When the stay began, which for a re-delivered crossing is not now.
+    final stay = await attachedDatabase.placesDao.visitById(visitId);
+    final arrivedAt = stay?.arrivedAt ?? at;
 
-    final onTheDay = await occurrencesForDate(date);
+    final date = CalendarDate.fromDateTime(arrivedAt);
+    final timeOfDay = arrivedAt.hour * 60 + arrivedAt.minute;
+
+    final onTheDay = await occurrencesForDate(date, clock: () => at);
     final alreadyAccountedFor = onTheDay.any((occurrence) =>
-        occurrence.event.placeId == place.id &&
-        arrivalCountsFor(
-          date: date,
-          timeOfDay: occurrence.effectiveTimeOfDay,
-          arrivedAt: at,
-          grace: grace,
-        ));
+        !occurrence.isVisitRecord && occurrence.visit?.id == visitId);
     if (alreadyAccountedFor) return null;
 
     final id = await insertEvent(EventsCompanion.insert(
@@ -429,15 +549,57 @@ class EventsDao extends DatabaseAccessor<DaylineDatabase> with _$EventsDaoMixin 
       eventId: id,
       date: date,
       status: CompletionStatus.done,
-      at: at,
+      at: arrivedAt,
       automatic: true,
     );
 
-    final written = await occurrencesForDate(date);
+    final written = await occurrencesForDate(date, clock: () => at);
     for (final occurrence in written) {
       if (occurrence.eventId == id) return occurrence;
     }
     return null;
+  }
+
+  /// Puts stays already in the history onto the day they happened.
+  ///
+  /// Writing a stay onto the day at the moment of arrival is the fast path,
+  /// and it is the only path a stay ever had — so a day could miss one for
+  /// reasons that have nothing to do with the day itself: **Add visits to my
+  /// day** was turned on afterwards, the crossing arrived while the place was
+  /// still off, or the callback never ran. Nothing went back for them, and the
+  /// dashboard went on listing stays the day line had never heard of.
+  ///
+  /// So the day is filled in from the visits themselves, which are the record.
+  /// Only stays that *began* on [date] are written here: one that ran over
+  /// from the night before belongs to the night before, and the day it ran
+  /// into draws it without a row of its own.
+  ///
+  /// Idempotent, and it declines exactly what [recordVisitAsEvent] declines —
+  /// a stay with a row already, and one a plan on the day is showing. Returns
+  /// how many rows it wrote.
+  Future<int> fillDayFromVisits(CalendarDate date) async {
+    final stays = await _visitsAround(date);
+    if (stays.isEmpty) return 0;
+
+    final placesById = {
+      for (final place in await attachedDatabase.placesDao.allPlaces())
+        place.id: place,
+    };
+
+    var written = 0;
+    for (final stay in stays) {
+      if (CalendarDate.fromDateTime(stay.arrivedAt) != date) continue;
+      final place = placesById[stay.placeId];
+      if (place == null || !place.addVisitsToDay) continue;
+
+      final recorded = await recordVisitAsEvent(
+        place: place,
+        visitId: stay.id,
+        at: stay.arrivedAt,
+      );
+      if (recorded != null) written++;
+    }
+    return written;
   }
 
   /// Fills in how long a recorded stay lasted, once it is over.
